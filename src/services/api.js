@@ -5,7 +5,7 @@ const getBaseURL = () => {
   if (typeof window !== 'undefined') {
     // Agar hostname localhost nahi hai, toh Render ka URL use karo
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      return "https://hotel-resturant-mangement-system.onrender.com/api";
+      return "hotel-resturant-management-system-backend-production.up.railway.api/api";
     }
   }
   // Local development ke liye default
