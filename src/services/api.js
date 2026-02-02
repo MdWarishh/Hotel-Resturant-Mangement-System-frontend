@@ -3,10 +3,14 @@
 // Yeh logic check karega ki browser mein URL kya hai
 
 
-const BASE_URL = getBaseURL();
+// src/services/api.js
+
+const BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 export const apiRequest = async (endpoint, options = {}) => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const token =
+    typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 
   const res = await fetch(`${BASE_URL}${endpoint}`, {
     headers: {
@@ -22,5 +26,5 @@ export const apiRequest = async (endpoint, options = {}) => {
     throw new Error(data.message || 'Something went wrong');
   }
 
-  return { data }; // AuthContext '.data' expect kar raha hai, isliye wrap kiya hai
+  return { data };
 };
