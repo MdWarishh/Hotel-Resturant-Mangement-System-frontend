@@ -1,16 +1,7 @@
 // src/services/api.js
 
 // Yeh logic check karega ki browser mein URL kya hai
-const getBaseURL = () => {
-  if (typeof window !== 'undefined') {
-    // Agar hostname localhost nahi hai, toh Render ka URL use karo
-    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      return "hotel-resturant-management-system-backend-production.up.railway.api/api";
-    }
-  }
-  // Local development ke liye default
-  return "http://localhost:5000/api";
-};
+
 
 const BASE_URL = getBaseURL();
 
