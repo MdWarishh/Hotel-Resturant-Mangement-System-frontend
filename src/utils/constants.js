@@ -1,0 +1,10 @@
+// src/utils/constants.js
+export const USER_ROLES = {
+  SUPER_ADMIN: 'super_admin',
+  HOTEL_ADMIN: 'hotel_admin',
+  MANAGER: 'manager',
+  CASHIER: 'cashier',
+  KITCHEN_STAFF: 'kitchen_staff',
+};
+
+export const API_BASE_URL = 'http://localhost:5000/api'|| 'https://hotel-resturant-mangement-system.onrender.com/api';
