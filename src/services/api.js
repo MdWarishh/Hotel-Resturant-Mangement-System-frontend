@@ -1,18 +1,13 @@
 // src/services/api.js
-
-// Yeh logic check karega ki browser mein URL kya hai
-
-
-// src/services/api.js
-
-const BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+import { API_BASE_URL } from '@/utils/constants';
 
 export const apiRequest = async (endpoint, options = {}) => {
   const token =
-    typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    typeof window !== 'undefined'
+      ? localStorage.getItem('token')
+      : null;
 
-  const res = await fetch(`${BASE_URL}${endpoint}`, {
+  const res = await fetch(`${API_BASE_URL}${endpoint}`, {
     headers: {
       'Content-Type': 'application/json',
       ...(token && { Authorization: `Bearer ${token}` }),
@@ -26,5 +21,5 @@ export const apiRequest = async (endpoint, options = {}) => {
     throw new Error(data.message || 'Something went wrong');
   }
 
-  return { data };
+  return data;
 };

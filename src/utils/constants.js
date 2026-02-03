@@ -7,4 +7,9 @@ export const USER_ROLES = {
   KITCHEN_STAFF: 'kitchen_staff',
 };
 
-export const API_BASE_URL = 'http://localhost:5000/api'|| 'https://hotel-resturant-mangement-system.onrender.com/api';
+// export const API_BASE_URL = 'http://localhost:5000/api'
+
+export const API_BASE_URL =
+  process.env.NODE_ENV === 'production'
+    ? 'https://hotel-resturant-management-system-backend-production.up.railway.app/api'
+    : 'http://localhost:5000/api';

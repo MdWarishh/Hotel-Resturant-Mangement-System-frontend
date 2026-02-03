@@ -1,4 +1,3 @@
-// src/context/AuthContext.js
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
@@ -42,6 +41,7 @@ export const AuthProvider = ({ children }) => {
     router.push('/login');
   };
 
+  // ---------- ROLE REDIRECT ----------
   const handleRoleRedirect = (role) => {
     switch (role) {
       case USER_ROLES.SUPER_ADMIN:
@@ -64,6 +64,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // ---------- INIT ----------
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) fetchProfile();
