@@ -9,7 +9,7 @@ const menu = [
   { name: 'Dashboard', href: '/super-admin', icon: LayoutDashboard },
   { name: 'Hotels', href: '/super-admin/hotels', icon: Hotel },
   { name: 'Users', href: '/super-admin/users', icon: Users },
-  { name: 'Reports', href: '/super-admin/reports', icon: BarChart3 },
+  // { name: 'Reports', href: '/super-admin/reports', icon: BarChart3 },
 ];
 
 export default function Sidebar() {
@@ -53,7 +53,7 @@ export default function Sidebar() {
             <Crown className="h-6 w-6 text-white" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-[rgb(34,40,49)]">HotelMaster</h2>
+            <h2 className="text-lg font-bold text-[rgb(34,40,49)]">Main Admin</h2>
             <p className="text-xs text-[rgb(57,62,70)]">Super Admin</p>
           </div>
         </div>

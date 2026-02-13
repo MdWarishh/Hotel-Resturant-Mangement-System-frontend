@@ -7,6 +7,17 @@ export const USER_ROLES = {
   KITCHEN_STAFF: 'kitchen_staff',
 };
 
+export const ORDER_STATUS = {
+  PENDING: 'pending',
+  PREPARING: 'preparing',
+  READY: 'ready',
+  SERVED: 'served',
+  COMPLETED: 'completed',   // ya jo bhi backend mein hai
+  CANCELLED: 'cancelled',
+  NO_SHOW: 'no_show',
+  // Add more if needed from backend constants
+};
+
 // export const API_BASE_URL = 'http://localhost:5000/api'
 
 export const API_BASE_URL =

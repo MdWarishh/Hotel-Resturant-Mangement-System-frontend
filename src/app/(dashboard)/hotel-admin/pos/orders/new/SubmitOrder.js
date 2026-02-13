@@ -22,47 +22,47 @@ export default function SubmitOrder({ onSuccess }) {
 
   const handleSubmit = async () => {
     setError(null);
-
+    
     if (!order.items || order.items.length === 0) {
       setError('Please add at least one item');
       return;
     }
-
+    
     const payload = {
+      // hotel: user?.hotel,
       orderType: order.orderType,
       tableNumber:
         order.orderType === 'dine-in'
-          ? order.tableNumber
-          : undefined,
-      room: order.room || undefined,
-      booking: order.booking || undefined,
-      items: order.items.map((item) => ({
-        menuItem: item.menuItemId,
+        ? order.tableNumber
+        : undefined,
+        room: order.room || undefined,
+        booking: order.booking || undefined,
+        items: order.items.map((item) => ({
+          menuItem: item.menuItemId,
         variant: item.variant,
         quantity: item.quantity,
       })),
     };
-
+     
     try {
       setLoading(true);
 
-      const res = await apiRequest('/pos/orders', {
+  const res = await apiRequest('/pos/orders', {
   method: 'POST',
   body: JSON.stringify(payload),
 });
+console.log('Sending payload:', payload);
+   
 
-const createdOrder = res?.data?.data?.order || res?.data?.order;
+const createdOrder = res.data?.order || res.data;
 
-      // Reset cart/state
-      
-      resetOrder();
-
-      // 🔑 ROLE-SAFE REDIRECT
-      if (typeof onSuccess === 'function') {
-        onSuccess(createdOrder);
-      } else {
+// VERY IMPORTANT — pass the real saved order to parent
+if (typeof onSuccess === 'function') {
+  onSuccess(createdOrder);
+}
+else {
         // Default (Hotel Admin safe fallback)
-        router.replace('/hotel-admin/pos/orders/new');
+        // router.replace('/hotel-admin/pos/orders/new');
       }
     } catch (err) {
       setError(err.message || 'Failed to place order');
@@ -70,6 +70,9 @@ const createdOrder = res?.data?.data?.order || res?.data?.order;
       setLoading(false);
     }
   };
+  
+
+  
 
   return (
     <div>

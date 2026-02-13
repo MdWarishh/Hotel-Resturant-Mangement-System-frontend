@@ -3,7 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { apiRequest } from '@/services/api';
-import { ArrowLeft, User, Phone, Mail, DoorOpen, Bed, Calendar, Clock, CreditCard, Download, Receipt, LogOut, Loader2, X } from 'lucide-react';
+import { 
+  ArrowLeft, User, Phone, Mail, DoorOpen, Calendar, CreditCard, 
+  Download, LogOut, Loader2, X, Clock, UserCheck, Globe, Image as ImageIcon 
+} from 'lucide-react';
 
 export default function BookingDetailsPage() {
   const { id } = useParams();
@@ -14,7 +17,7 @@ export default function BookingDetailsPage() {
   const [showPayment, setShowPayment] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentLoading, setPaymentLoading] = useState(false);
-  const token = localStorage.getItem('token');
+  const [showIdProofModal, setShowIdProofModal] = useState(false);
 
   useEffect(() => {
     const fetchBooking = async () => {
@@ -31,34 +34,11 @@ export default function BookingDetailsPage() {
     if (id) fetchBooking();
   }, [id]);
 
-  if (loading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="flex items-center gap-3">
-          <Loader2 className="h-6 w-6 animate-spin text-[rgb(0,173,181)]" />
-          <p className="text-sm text-[rgb(57,62,70)]">Loading booking details...</p>
-        </div>
-      </div>
-    );
-  }
+  const nights = booking?.dates?.checkIn && booking?.dates?.checkOut
+    ? Math.ceil((new Date(booking.dates.checkOut) - new Date(booking.dates.checkIn)) / 86400000)
+    : 0;
 
-  if (!booking || !booking.dates) {
-    return (
-      <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-red-700">
-        Booking data incomplete or corrupted
-      </div>
-    );
-  }
-
-  const nights =
-    booking.dates.checkIn && booking.dates.checkOut
-      ? Math.ceil(
-          (new Date(booking.dates.checkOut) - new Date(booking.dates.checkIn)) /
-            (1000 * 60 * 60 * 24)
-        )
-      : 0;
-
-  const due = (booking.pricing?.total || 0) - (booking.advancePayment || 0);
+  const due = (booking?.pricing?.total || 0) - (booking?.advancePayment || 0);
 
   const handlePaymentUpdate = async () => {
     if (!paymentAmount || Number(paymentAmount) <= 0) {
@@ -66,19 +46,15 @@ export default function BookingDetailsPage() {
       return;
     }
 
+    setPaymentLoading(true);
     try {
-      setPaymentLoading(true);
-
       await apiRequest(`/bookings/${booking._id}/payment`, {
         method: 'POST',
-        body: JSON.stringify({
-          amount: Number(paymentAmount),
-        }),
+        body: JSON.stringify({ amount: Number(paymentAmount) }),
       });
 
       setShowPayment(false);
       setPaymentAmount('');
-
       const res = await apiRequest(`/bookings/${id}`);
       setBooking(res.data.booking);
     } catch (err) {
@@ -91,298 +67,357 @@ export default function BookingDetailsPage() {
   const handleCheckout = async () => {
     if (!confirm('Confirm check-out?')) return;
 
-    await apiRequest(`/bookings/${booking._id}/checkout`, {
-      method: 'POST',
-    });
-
-    const res = await apiRequest(`/bookings/${id}`);
-    setBooking(res.data.booking);
+    try {
+      await apiRequest(`/bookings/${booking._id}/checkout`, { method: 'POST' });
+      const res = await apiRequest(`/bookings/${id}`);
+      setBooking(res.data.booking);
+    } catch (err) {
+      alert(err.message || 'Check-out failed');
+    }
   };
 
+ const handleDownloadPDF = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    // Using fetch directly to handle the blob stream
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/hotel-admin/bookings/${id}/invoice/pdf?token=${token}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) throw new Error('Failed to generate invoice');
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Invoice-${booking.bookingNumber}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    alert('Error downloading invoice: ' + err.message);
+  }
+};
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="h-10 w-10 animate-spin text-teal-600" />
+      </div>
+    );
+  }
+
+  if (!booking) {
+    return (
+      <div className="text-center py-20 text-red-600">
+        Booking not found or failed to load
+      </div>
+    );
+  }
+
+ const idProofImage = booking.guest?.idProof?.image?.url;
+
   return (
-    <div className="max-w-4xl space-y-6">
-      {/* HEADER */}
-      <div className="flex items-center justify-between rounded-xl border border-[rgb(57,62,70)]/10 bg-white p-6 shadow-lg">
+    <div className="max-w-6xl mx-auto space-y-8 p-4">
+      {/* Header */}
+      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <h2 className="text-2xl font-semibold text-[rgb(34,40,49)]">
-            Booking #{booking.bookingNumber}
-          </h2>
-          <p className="mt-1 text-sm text-[rgb(57,62,70)]">
-            Complete booking information
+          <div className="flex items-center gap-4">
+            <h2 className="text-4xl font-bold text-teal-600">#{booking.bookingNumber}</h2>
+            <StatusBadge status={booking.status} />
+          </div>
+          <p className="mt-2 text-lg text-teal-600">
+            Guest: <span className="font-semibold text-gray-900">{booking.guest?.name}</span>
+          </p>
+          {/* NEW: Booking Source */}
+          <p className="mt-1 text-base text-gray-600 flex items-center gap-2">
+            <Globe className="h-4 w-4 text-teal-600" />
+            Booked via: <span className="font-medium text-gray-900">{booking.source || 'Direct'}</span>
           </p>
         </div>
 
-        <button
-          onClick={() => router.back()}
-          className="group flex items-center gap-2 rounded-lg bg-[rgb(238,238,238)] px-4 py-2 text-sm font-medium text-[rgb(34,40,49)] transition-all duration-200 hover:bg-[rgb(57,62,70)] hover:text-white"
-        >
-          <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
-          Back
-        </button>
-      </div>
-
-      {/* STATUS */}
-      <Section title="Status" icon={<Receipt className="h-5 w-5" />}>
-        <div className="col-span-2">
-          <StatusBadge status={booking.status} />
-        </div>
-      </Section>
-
-      {/* GUEST */}
-      <Section title="Guest Details" icon={<User className="h-5 w-5" />}>
-        <Info label="Name" value={booking.guest?.name} icon={<User className="h-4 w-4" />} />
-        <Info label="Phone" value={booking.guest?.phone} icon={<Phone className="h-4 w-4" />} />
-        <Info label="Email" value={booking.guest?.email || '—'} icon={<Mail className="h-4 w-4" />} />
-      </Section>
-
-      {/* ROOM */}
-      <Section title="Room Details" icon={<DoorOpen className="h-5 w-5" />}>
-        <Info label="Room Number" value={booking.room?.roomNumber} icon={<DoorOpen className="h-4 w-4" />} />
-        <Info label="Room Type" value={booking.room?.roomType} icon={<Bed className="h-4 w-4" />} />
-        <Info label="Floor" value={booking.room?.floor || '—'} />
-      </Section>
-
-      {/* DATES */}
-      <Section title="Stay Details" icon={<Calendar className="h-5 w-5" />}>
-        <Info
-          label="Planned Check-in"
-          value={new Date(booking.dates.checkIn).toLocaleString()}
-          icon={<Calendar className="h-4 w-4" />}
-        />
-        <Info
-          label="Planned Check-out"
-          value={new Date(booking.dates.checkOut).toLocaleString()}
-          icon={<Calendar className="h-4 w-4" />}
-        />
-        <Info
-          label="Actual Check-in"
-          value={
-            booking.dates.actualCheckIn
-              ? new Date(booking.dates.actualCheckIn).toLocaleString()
-              : '—'
-          }
-          icon={<Clock className="h-4 w-4" />}
-        />
-        <Info
-          label="Actual Check-out"
-          value={
-            booking.dates.actualCheckOut
-              ? new Date(booking.dates.actualCheckOut).toLocaleString()
-              : '—'
-          }
-          icon={<Clock className="h-4 w-4" />}
-        />
-        <Info label="Nights" value={nights} />
-      </Section>
-
-      {/* PAYMENT */}
-      <Section title="Payment" icon={<CreditCard className="h-5 w-5" />}>
-        <Info
-          label="Payment Status"
-          value={<PaymentBadge status={booking.paymentStatus} />}
-        />
-        <Info label="Total Amount" value={`₹${booking.pricing?.total || 0}`} />
-        <Info label="Advance Paid" value={`₹${booking.advancePayment || 0}`} />
-        <Info label="Due Amount" value={`₹${due}`} />
-
-        <div className="col-span-2 mt-4 flex flex-wrap gap-3">
+        <div className="flex gap-4">
           <button
-            onClick={() => setShowPayment(true)}
-            className="flex items-center gap-2 rounded-lg bg-[rgb(0,173,181)] px-4 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-[rgb(0,173,181)]/90"
+            onClick={() => router.back()}
+            className="text-black flex items-center gap-2 px-6 py-3 bg-gray-400 hover:bg-gray-500 rounded-2xl font-medium"
           >
-            <CreditCard className="h-4 w-4" />
-            Update Payment
+            <ArrowLeft className="h-5 w-5" /> Back
           </button>
 
           {booking.status === 'checked_out' && (
-            <>
-              <button
-                onClick={() =>
-                  router.push(`/hotel-admin/bookings/${booking._id}/invoice`)
-                }
-                className="flex items-center gap-2 rounded-lg bg-[rgb(57,62,70)] px-4 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-[rgb(34,40,49)]"
-              >
-                <Receipt className="h-4 w-4" />
-                View Invoice
-              </button>
-
-              <button
-                onClick={() =>
-                  window.open(
-                    `${process.env.NEXT_PUBLIC_API_URL}/bookings/${booking._id}/invoice/pdf?token=${token}`,
-                    '_blank'
-                  )
-                }
-                className="flex items-center gap-2 rounded-lg bg-[rgb(0,173,181)] px-4 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-[rgb(0,173,181)]/90"
-              >
-                <Download className="h-4 w-4" />
-                Download PDF
-              </button>
-            </>
+            <button
+              onClick={handleDownloadPDF}
+              className="flex items-center gap-3 bg-teal-600 text-white font-semibold px-8 py-3 rounded-2xl hover:bg-teal-700 shadow-lg"
+            >
+              <Download className="h-5 w-5" /> Download Invoice
+            </button>
           )}
         </div>
-      </Section>
+      </div>
 
-      {/* AUDIT */}
-      <Section title="Audit" icon={<Clock className="h-5 w-5" />}>
-        <Info
-          label="Created At"
-          value={new Date(booking.createdAt).toLocaleString()}
-        />
-        <Info label="Created By" value={booking.createdBy?.name || '—'} />
-        <Info label="Checked-in By" value={booking.checkedInBy?.name || '—'} />
-        <Info label="Checked-out By" value={booking.checkedOutBy?.name || '—'} />
-
-        {booking.status === 'checked_in' && booking.paymentStatus === 'paid' && (
-          <div className="col-span-2 mt-4">
-            <button
-              onClick={handleCheckout}
-              className="flex items-center gap-2 rounded-lg bg-[rgb(0,173,181)] px-4 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-[rgb(0,173,181)]/90"
-            >
-              <LogOut className="h-4 w-4" />
-              Check-out Guest
-            </button>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Left - Main Info */}
+        <div className="lg:col-span-2 space-y-8">
+          {/* Guest */}
+          <Section title="Guest Information" icon={<User className="h-6 w-6" />}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <Info label="Name" value={booking.guest?.name} />
+              <Info label="Phone" value={booking.guest?.phone} icon={<Phone className="h-4 w-4" />} />
+              <Info label="Email" value={booking.guest?.email || '—'} icon={<Mail className="h-4 w-4" />} />
+              
+              {booking.guest?.idProof && (
+                <div className="space-y-2">
+                  <Info 
+                    label="ID Proof" 
+                    value={`${booking.guest.idProof.type.toUpperCase()} - ${booking.guest.idProof.number}`} 
+                  />
+                 {idProofImage ? (
+      <div className="mt-3">
+        <p className="text-sm font-medium text-gray-700 mb-2">Uploaded ID Proof Photo</p>
+        <div 
+          className="relative w-64 h-40 rounded-xl overflow-hidden border border-gray-300 shadow-md cursor-pointer group"
+          onClick={() => setShowIdProofModal(true)}
+        >
+          <img
+            src={idProofImage}
+            alt={`${booking.guest.idProof.type} document`}
+            className="w-full h-full object-cover transition-transform group-hover:scale-105"
+          />
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+            <div className="text-white text-sm font-medium flex items-center gap-2">
+              <ImageIcon className="h-5 w-5" />
+              View Full Size
+            </div>
           </div>
-        )}
-      </Section>
+        </div>
+      </div>
+    ) : (
+      <div className="mt-3 p-4 border border-dashed border-gray-300 rounded-xl text-gray-400 text-sm flex items-center gap-2">
+        <ImageIcon className="h-5 w-5" /> No image uploaded
+      </div>
+    )}
+                </div>
+              )}
+            </div>
 
-      {/* PAYMENT MODAL */}
-      {showPayment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgb(34,40,49)]/60 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm animate-[modalSlide_0.3s_ease-out] rounded-xl border border-[rgb(57,62,70)]/10 bg-white p-6 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-[rgb(34,40,49)]">
-                Update Payment
-              </h3>
+            {booking.specialRequests && (
+              <div className="mt-8 p-6 bg-amber-50 border border-amber-200 rounded-2xl">
+                <p className="text-sm font-medium text-amber-800">Special Requests</p>
+                <p className="mt-2 text-amber-900">{booking.specialRequests}</p>
+              </div>
+            )}
+          </Section>
+
+          {/* Room & Stay */}
+          <Section title="Room & Stay Details" icon={<DoorOpen className="h-6 w-6" />}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+              <div>
+                <Info label="Room" value={`Room ${booking.room?.roomNumber} - ${booking.room?.roomType}`} />
+                <Info label="Nights" value={nights} />
+              </div>
+
+              <div className="space-y-4">
+                <Info label="Planned Check-in" value={new Date(booking.dates.checkIn).toLocaleString('en-IN')} />
+                <Info label="Planned Check-out" value={new Date(booking.dates.checkOut).toLocaleString('en-IN')} />
+
+                {booking.dates.actualCheckIn && (
+                  <Info 
+                    label="Actual Check-in" 
+                    value={
+                      <>
+                        {new Date(booking.dates.actualCheckIn).toLocaleString('en-IN')}
+                        {booking.checkedInBy?.name && <span className="text-teal-600 ml-2">by {booking.checkedInBy.name}</span>}
+                      </>
+                    } 
+                  />
+                )}
+
+                {booking.dates.actualCheckOut && (
+                  <Info 
+                    label="Actual Check-out" 
+                    value={
+                      <>
+                        {new Date(booking.dates.actualCheckOut).toLocaleString('en-IN')}
+                        {booking.checkedOutBy?.name && <span className="text-teal-600 ml-2">by {booking.checkedOutBy.name}</span>}
+                      </>
+                    } 
+                  />
+                )}
+
+                <Info 
+                  label="Created By" 
+                  value={booking.createdBy?.name || 'System'} 
+                  icon={<UserCheck className="h-4 w-4" />}
+                />
+              </div>
+            </div>
+          </Section>
+
+          {/* Pricing Breakdown */}
+          <Section title="Pricing Details" icon={<CreditCard className="h-6 w-6" />}>
+            <div className="text-black space-y-4 text-lg">
+              <div className="flex justify-between"><span>Room Charges</span><span className="font-medium">₹{booking.pricing?.roomCharges || 0}</span></div>
+              {booking.pricing?.extraCharges > 0 && <div className="flex justify-between text-teal-600"><span>Extra Guests</span><span>+₹{booking.pricing.extraCharges}</span></div>}
+              <div className="flex justify-between"><span>GST (5%)</span><span>₹{booking.pricing?.tax || 0}</span></div>
+              <div className="border-t pt-4 flex justify-between text-xl font-bold">
+                <span>Total Amount</span>
+                <span className="text-teal-600">₹{booking.pricing?.total || 0}</span>
+              </div>
+            </div>
+          </Section>
+        </div>
+
+        {/* Right - Actions */}
+        <div className="space-y-8">
+          <Section title="Payment Status" icon={<CreditCard className="h-6 w-6" />}>
+            <div className="text-center">
+              <PaymentBadge status={booking.paymentStatus} />
+              <div className="mt-6 text-4xl font-bold text-gray-900">₹{booking.advancePayment || 0}</div>
+              <p className="text-sm text-gray-500 mt-2">Paid Amount</p>
+
+              {due > 0 && (
+                <div className="mt-6 p-4 bg-orange-50 border border-orange-200 rounded-2xl">
+                  <p className="text-orange-700 font-semibold">Due Amount</p>
+                  <p className="text-3xl font-bold text-orange-600">₹{due}</p>
+                </div>
+              )}
+
               <button
-                onClick={() => setShowPayment(false)}
-                className="rounded-lg p-1 text-[rgb(57,62,70)] transition-colors hover:bg-[rgb(238,238,238)]"
+                onClick={() => setShowPayment(true)}
+                className="mt-6 w-full bg-teal-600 text-white py-4 rounded-2xl font-semibold hover:bg-teal-700"
               >
-                <X className="h-5 w-5" />
+                Update Payment
               </button>
+
+              {booking.status === 'checked_in' && booking.paymentStatus === 'paid' && (
+                <button
+                  onClick={handleCheckout}
+                  className="mt-4 w-full bg-emerald-600 text-white py-4 rounded-2xl font-semibold hover:bg-emerald-700 flex items-center justify-center gap-2"
+                >
+                  <LogOut className="h-5 w-5" /> Check-out Guest
+                </button>
+              )}
+            </div>
+          </Section>
+        </div>
+      </div>
+
+      {/* Payment Modal - unchanged */}
+      {showPayment && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-semibold text-black">Add Payment</h3>
+              <button onClick={() => setShowPayment(false)}><X className="h-6 w-6" /></button>
             </div>
 
-            <div className="mb-4">
-              <label className="mb-2 block text-sm font-medium text-[rgb(34,40,49)]">
-                Amount
-              </label>
-              <input
-                type="number"
-                placeholder="Enter amount"
-                value={paymentAmount}
-                onChange={(e) => setPaymentAmount(e.target.value)}
-                className="w-full rounded-lg border border-[rgb(57,62,70)]/20 bg-[rgb(238,238,238)]/30 px-3 py-2 text-[rgb(34,40,49)] transition-all focus:border-[rgb(0,173,181)] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[rgb(0,173,181)]/20"
-              />
-            </div>
+            <input
+              type="number"
+              value={paymentAmount}
+              onChange={(e) => setPaymentAmount(e.target.value)}
+              placeholder="Enter amount"
+              className="w-full text-4xl font-bold p-6 border border-gray-200 rounded-2xl focus:border-teal-600 outline-none text-black"
+              autoFocus
+            />
 
-            <div className="flex justify-end gap-2">
+            <div className="flex gap-4 mt-8">
               <button
                 onClick={() => setShowPayment(false)}
-                className="rounded-lg bg-[rgb(238,238,238)] px-4 py-2 text-sm font-medium text-[rgb(34,40,49)] transition-all hover:bg-[rgb(57,62,70)]/10"
+                className="flex-1 py-4 border border-gray-300 rounded-2xl font-medium text-black"
               >
                 Cancel
               </button>
-
               <button
                 onClick={handlePaymentUpdate}
-                disabled={paymentLoading}
-                className="flex items-center gap-2 rounded-lg bg-[rgb(0,173,181)] px-4 py-2 text-sm font-medium text-white transition-all hover:bg-[rgb(0,173,181)]/90 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={paymentLoading || !paymentAmount}
+                className="flex-1 bg-teal-600 text-black py-4 rounded-2xl font-semibold hover:bg-teal-700 disabled:opacity-90"
               >
-                {paymentLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  'Save'
-                )}
+                {paymentLoading ? 'Saving...' : 'Save Payment'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      <style jsx>{`
-        @keyframes modalSlide {
-          from {
-            opacity: 0;
-            transform: translateY(-20px) scale(0.95);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-      `}</style>
+      {/* NEW: ID Proof Image Modal */}
+      {showIdProofModal && idProofImage && (
+        <div 
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowIdProofModal(false)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] w-full" onClick={e => e.stopPropagation()}>
+            <button 
+              className="absolute -top-12 right-0 text-white bg-gray-800/50 p-3 rounded-full hover:bg-gray-700"
+              onClick={() => setShowIdProofModal(false)}
+            >
+              <X className="h-6 w-6" />
+            </button>
+            <img
+              src={idProofImage}
+              alt="ID Proof Full Size"
+              className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-/* ---------------- UI HELPERS ---------------- */
-
+/* UI Components - unchanged except minor tweaks */
 function Section({ title, icon, children }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-[rgb(57,62,70)]/10 bg-white shadow-lg transition-all duration-300 hover:shadow-xl">
-      <div className="flex items-center gap-2 border-b border-[rgb(57,62,70)]/10 bg-[rgb(238,238,238)]/50 px-6 py-4">
-        <div className="text-[rgb(0,173,181)]">{icon}</div>
-        <h3 className="text-lg font-semibold text-[rgb(34,40,49)]">{title}</h3>
+    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="px-8 py-5 bg-gray-50 border-b flex items-center gap-3">
+        <div className="text-teal-600">{icon}</div>
+        <h3 className="text-xl font-semibold text-gray-900">{title}</h3>
       </div>
-      <div className="grid grid-cols-1 gap-4 p-6 md:grid-cols-2">
-        {children}
-      </div>
+      <div className="p-8">{children}</div>
     </div>
   );
 }
 
 function Info({ label, value, icon }) {
   return (
-    <div className="group">
-      <div className="mb-1 flex items-center gap-2">
-        {icon && <div className="text-[rgb(57,62,70)]/50">{icon}</div>}
-        <p className="text-xs font-medium text-[rgb(57,62,70)]">{label}</p>
+    <div>
+      <div className="text-xs uppercase tracking-widest text-gray-500 mb-2 flex items-center gap-2">
+        {icon}
+        {label}
       </div>
-      <p className="font-medium text-[rgb(34,40,49)]">{value ?? '—'}</p>
+      <div className="font-medium text-gray-900 text-lg">{value || '—'}</div>
     </div>
   );
 }
 
 function StatusBadge({ status }) {
   const styles = {
-    pending: 'bg-[rgb(238,238,238)] text-[rgb(57,62,70)] border border-[rgb(57,62,70)]/20',
-    confirmed: 'bg-[rgb(0,173,181)]/10 text-[rgb(0,173,181)] border border-[rgb(0,173,181)]/30',
-    reserved: 'bg-[rgb(0,173,181)]/10 text-[rgb(0,173,181)] border border-[rgb(0,173,181)]/30',
-    checked_in: 'bg-[rgb(0,173,181)]/20 text-[rgb(0,173,181)] border border-[rgb(0,173,181)]/40',
-    checked_out: 'bg-[rgb(57,62,70)]/10 text-[rgb(57,62,70)] border border-[rgb(57,62,70)]/30',
-    cancelled: 'bg-[rgb(238,238,238)] text-[rgb(57,62,70)] border border-[rgb(57,62,70)]/20',
-    no_show: 'bg-[rgb(238,238,238)] text-[rgb(57,62,70)] border border-[rgb(57,62,70)]/20',
+    confirmed: 'bg-teal-100 text-teal-700',
+    reserved: 'bg-blue-100 text-blue-700',
+    checked_in: 'bg-emerald-100 text-emerald-700',
+    checked_out: 'bg-gray-200 text-gray-700',
+    cancelled: 'bg-red-100 text-red-700',
+    no_show: 'bg-amber-100 text-amber-700',
   };
-
   return (
-    <span
-      className={`inline-block rounded-full px-3 py-1.5 text-sm font-medium ${
-        styles[status] || styles.pending
-      }`}
-    >
-      {status.replace('_', ' ')}
+    <span className={`px-6 py-2 text-sm font-semibold rounded-full ${styles[status] || 'bg-gray-100 text-gray-600'}`}>
+      {status?.replace('_', ' ').toUpperCase() || 'UNKNOWN'}
     </span>
   );
 }
 
 function PaymentBadge({ status }) {
   const styles = {
-    pending: 'bg-[rgb(238,238,238)] text-[rgb(57,62,70)] border border-[rgb(57,62,70)]/20',
-    paid: 'bg-[rgb(0,173,181)]/10 text-[rgb(0,173,181)] border border-[rgb(0,173,181)]/30',
-    partially_paid: 'bg-[rgb(0,173,181)]/10 text-[rgb(0,173,181)] border border-[rgb(0,173,181)]/30',
-    refunded: 'bg-[rgb(238,238,238)] text-[rgb(57,62,70)] border border-[rgb(57,62,70)]/20',
+    paid: 'bg-emerald-100 text-emerald-700',
+    partially_paid: 'bg-amber-100 text-amber-700',
+    pending: 'bg-orange-100 text-orange-700',
   };
-
   return (
-    <span
-      className={`inline-block rounded-full px-3 py-1 text-sm font-medium ${
-        styles[status] || styles.pending
-      }`}
-    >
-      {status?.replace('_', ' ')}
+    <span className={`px-6 py-3 text-lg font-semibold rounded-full ${styles[status] || 'bg-gray-100 text-gray-600'}`}>
+      {status?.replace('_', ' ').toUpperCase() || 'PENDING'}
     </span>
   );
 }

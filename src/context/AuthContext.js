@@ -9,6 +9,7 @@ const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [token, setToken] = useState(null); // 🔥 ADD THIS
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -30,13 +31,16 @@ export const AuthProvider = ({ children }) => {
       body: JSON.stringify({ email, password }),
     });
 
-    localStorage.setItem('token', res.data.token);
+    const authToken = res.data.token;
+    localStorage.setItem('token', authToken);
+    setToken(authToken); // 🔥 SET TOKEN IN STATE
     setUser(res.data.user);
     handleRoleRedirect(res.data.user.role);
   };
 
   const logout = () => {
     localStorage.removeItem('token');
+    setToken(null); // 🔥 CLEAR TOKEN FROM STATE
     setUser(null);
     router.push('/login');
   };
@@ -66,14 +70,18 @@ export const AuthProvider = ({ children }) => {
 
   // ---------- INIT ----------
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) fetchProfile();
-    else setLoading(false);
+    const storedToken = localStorage.getItem('token');
+    if (storedToken) {
+      setToken(storedToken); // 🔥 SET TOKEN FROM LOCALSTORAGE
+      fetchProfile();
+    } else {
+      setLoading(false);
+    }
   }, []);
 
   return (
     <AuthContext.Provider
-      value={{ user, login, logout, loading }}
+      value={{ user, token, login, logout, loading }} // 🔥 ADD TOKEN HERE
     >
       {children}
     </AuthContext.Provider>

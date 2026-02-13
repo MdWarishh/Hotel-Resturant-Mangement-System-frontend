@@ -1,14 +1,13 @@
 'use client';
 
-// app/hotel-admin/inventory/create/page.js  (or your exact path)
-
-
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
 import { apiRequest } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
-import { ArrowLeft, PackagePlus, Loader2, Check } from 'lucide-react';
+import { 
+  ArrowLeft, PackagePlus, Loader2, CheckCircle2, AlertCircle,
+  UserPlus, DollarSign, Scale, Archive, ToggleLeft, ToggleRight 
+} from 'lucide-react';
 
 const CATEGORIES = [
   'food',
@@ -28,234 +27,276 @@ export default function CreateInventoryItemPage() {
     name: '',
     category: '',
     unit: '',
+    currentStock: '0',
     minStock: '',
     purchasePrice: '',
+    supplier: '',
+    description: '',
     isActive: true,
   });
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
 
-  /* -------- HANDLE CHANGE -------- */
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-
-    setForm((prev) => ({
+    setForm(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
     }));
+    setError('');
   };
 
-  /* -------- SUBMIT -------- */
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
+    // Basic validation
+    if (!form.name.trim()) return setError('Item name is required');
+    if (!form.category) return setError('Please select a category');
+    if (!form.unit) return setError('Please select a unit');
+    if (!form.purchasePrice || Number(form.purchasePrice) <= 0) {
+      return setError('Valid purchase price is required');
+    }
+
     try {
       await apiRequest('/inventory', {
         method: 'POST',
         body: JSON.stringify({
-          hotel: user.hotel._id,        // ✅ REQUIRED
-          name: form.name,
+          hotel: user.hotel._id,
+          name: form.name.trim(),
           category: form.category,
           unit: form.unit,
           quantity: {
-            current: 0,                // ✅ REQUIRED
-            minimum: Number(form.minStock),
+            current: Number(form.currentStock) || 0,
+            minimum: Number(form.minStock) || 0,
           },
           pricing: {
-            purchasePrice: Number(form.purchasePrice), // ✅ REQUIRED
+            purchasePrice: Number(form.purchasePrice),
           },
+          supplier: form.supplier.trim() || undefined,
+          description: form.description.trim() || undefined,
           isActive: form.isActive,
         }),
       });
 
-      router.push('/hotel-admin/inventory');
+      setSuccess(true);
+      setTimeout(() => {
+        router.push('/hotel-admin/inventory');
+      }, 1500);
     } catch (err) {
-      setError(err.message || 'Failed to create item');
+      setError(err.message || 'Failed to create inventory item');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#222831] p-4 sm:p-6 lg:p-8">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="max-w-2xl mx-auto"
-      >
-        {/* Header */}
-        <div className="mb-8 flex items-center gap-4">
-          <button
-            onClick={() => router.back()}
-            className="text-[#cccccc] hover:text-[#00adb5] transition-colors p-2 rounded-lg hover:bg-[#3a3f46]"
-          >
-            <ArrowLeft size={24} />
-          </button>
-          <div className="flex items-center gap-3">
-            <PackagePlus size={28} className="text-[#00adb5]" />
-            <h2 className="text-2xl sm:text-3xl font-semibold text-[#eeeeee] tracking-tight">
-              Add Inventory Item
-            </h2>
+    <div className="max-w-4xl mx-auto py-8 px-4">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-10">
+        <div className="flex items-center gap-4">
+          <div className="bg-teal-100 p-4 rounded-2xl">
+            <PackagePlus className="h-8 w-8 text-teal-600" />
+          </div>
+          <div>
+            <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Add New Inventory Item</h1>
+            <p className="text-gray-600 mt-1">Create stock item for hotel/restaurant</p>
           </div>
         </div>
 
-        {/* Form Card */}
-        <div className="bg-[#3a3f46] rounded-2xl shadow-2xl shadow-black/30 border border-[#222831]/50 overflow-hidden">
-          <div className="p-6 sm:p-8">
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="mb-6 rounded-lg bg-red-900/30 border border-red-800/50 p-4 text-sm text-red-300 text-center"
-              >
-                {error}
-              </motion.div>
-            )}
+        <button
+          onClick={() => router.back()}
+          className="flex text-black items-center gap-2 px-6 py-3 bg-gray-300 hover:bg-gray-400 rounded-2xl font-medium transition-all w-full sm:w-auto justify-center"
+        >
+          <ArrowLeft className="h-5 w-5" />
+          Back
+        </button>
+      </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* NAME */}
-              <Input
-                label="Item Name"
-                name="name"
-                value={form.name}
-                onChange={handleChange}
-                placeholder="e.g., Toilet Paper Rolls"
-                required
-              />
+      {error && (
+        <div className="mb-6 flex items-center gap-3 bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-2xl">
+          <AlertCircle className="h-6 w-6" />
+          <span>{error}</span>
+        </div>
+      )}
 
-              {/* CATEGORY */}
-              <div>
-                <label className="block text-sm font-medium text-[#cccccc] mb-1.5">
-                  Category
-                </label>
-                <select
-                  name="category"
-                  value={form.category}
-                  onChange={handleChange}
-                  required
-                  className="w-full px-4 py-3 bg-[#2d333b] border border-[#4a5058] rounded-lg text-[#eeeeee] focus:outline-none focus:border-[#00adb5] focus:ring-1 focus:ring-[#00adb5]/30 transition-all duration-200 appearance-none"
-                >
-                  <option value="">Select category</option>
-                  {CATEGORIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c.charAt(0).toUpperCase() + c.slice(1)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+      {success && (
+        <div className="mb-6 flex items-center gap-3 bg-emerald-50 border border-emerald-200 text-emerald-700 px-6 py-4 rounded-2xl">
+          <CheckCircle2 className="h-6 w-6" />
+          <span>Item created successfully! Redirecting...</span>
+        </div>
+      )}
 
-              {/* UNIT */}
-              <div>
-                <label className="block text-sm font-medium text-[#cccccc] mb-1.5">
-                  Unit
-                </label>
-                <select
-                  name="unit"
-                  value={form.unit}
-                  onChange={handleChange}
-                  required
-                  className="w-full px-4 py-3 bg-[#2d333b] border border-[#4a5058] rounded-lg text-[#eeeeee] focus:outline-none focus:border-[#00adb5] focus:ring-1 focus:ring-[#00adb5]/30 transition-all duration-200 appearance-none"
-                >
-                  <option value="">Select unit</option>
-                  {UNITS.map((u) => (
-                    <option key={u} value={u}>
-                      {u.toUpperCase()}
-                    </option>
-                  ))}
-                </select>
-              </div>
+      <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 md:p-10 space-y-10">
+        {/* Basic Info */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Item Name *</label>
+            <input
+              type="text"
+              name="name"
+              value={form.name}
+              onChange={handleChange}
+              required
+              className="w-full px-5 py-4 border text-black border-gray-200 rounded-2xl focus:border-teal-600 outline-none"
+              placeholder="e.g. Tomato, Rice, Cleaning Liquid"
+            />
+          </div>
 
-              {/* PURCHASE PRICE */}
-              <Input
-                label="Purchase Price (₹)"
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Category *</label>
+            <select
+              name="category"
+              value={form.category}
+              onChange={handleChange}
+              required
+              className="w-full px-5 py-4 text-black border border-gray-200 rounded-2xl focus:border-teal-600 outline-none bg-white"
+            >
+              <option value="">Select Category</option>
+              {CATEGORIES.map(cat => (
+                <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Stock & Pricing */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Unit *</label>
+            <select
+              name="unit"
+              value={form.unit}
+              onChange={handleChange}
+              required
+              className="w-full px-5 text-black py-4 border border-gray-200 rounded-2xl focus:border-teal-600 outline-none bg-white"
+            >
+              <option value="">Select Unit</option>
+              {UNITS.map(u => (
+                <option key={u} value={u}>{u.toUpperCase()}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Current Stock</label>
+            <input
+              type="number"
+              name="currentStock"
+              value={form.currentStock}
+              onChange={handleChange}
+              min="0"
+              className="w-full text-black px-5 py-4 border border-gray-200 rounded-2xl focus:border-teal-600 outline-none"
+              placeholder="0"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Min Stock Level *</label>
+            <input
+              type="number"
+              name="minStock"
+              value={form.minStock}
+              onChange={handleChange}
+              required
+              min="0"
+              className="w-full text-black px-5 py-4 border border-gray-200 rounded-2xl focus:border-teal-600 outline-none"
+              placeholder="e.g. 10"
+            />
+          </div>
+        </div>
+
+        {/* Pricing & Supplier */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Purchase Price (₹) *</label>
+            <div className="relative">
+              <DollarSign className="absolute left-4 top-4 h-5 w-5 text-gray-400" />
+              <input
                 type="number"
                 name="purchasePrice"
                 value={form.purchasePrice}
                 onChange={handleChange}
-                placeholder="0.00"
+                required
+                min="0"
                 step="0.01"
-                min="0"
-                required
+                className="w-full text-black pl-12 pr-5 py-4 border border-gray-200 rounded-2xl focus:border-teal-600 outline-none"
+                placeholder="0.00"
               />
+            </div>
+          </div>
 
-              {/* MIN STOCK */}
-              <Input
-                label="Minimum Stock Level (Alert)"
-                type="number"
-                name="minStock"
-                value={form.minStock}
-                onChange={handleChange}
-                placeholder="e.g., 50"
-                min="0"
-                required
-              />
-
-              {/* ACTIVE CHECKBOX */}
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    name="isActive"
-                    checked={form.isActive}
-                    onChange={handleChange}
-                    className="h-5 w-5 rounded border-[#4a5058] bg-[#2d333b] text-[#00adb5] focus:ring-[#00adb5]/30 checked:bg-[#00adb5] checked:border-[#00adb5] transition-all duration-200 cursor-pointer"
-                  />
-                  {form.isActive && (
-                    <Check
-                      size={16}
-                      className="absolute inset-0 m-auto text-[#222831] pointer-events-none"
-                    />
-                  )}
-                </div>
-                <label className="text-sm text-[#eeeeee] cursor-pointer">
-                  Item is active and available for use
-                </label>
-              </div>
-
-              {/* SUBMIT */}
-              <motion.button
-                whileHover={{ scale: 1.02, y: -1 }}
-                whileTap={{ scale: 0.98 }}
-                type="submit"
-                disabled={loading}
-                className="w-full flex items-center justify-center gap-3 py-3.5 px-6 bg-[#00adb5] text-[#222831] font-semibold rounded-xl shadow-xl shadow-[#00adb5]/20 hover:bg-[#00c4d1] focus:outline-none focus:ring-2 focus:ring-[#00adb5]/40 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed disabled:shadow-none"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 size={20} className="animate-spin" />
-                    Creating Item...
-                  </>
-                ) : (
-                  'Create Inventory Item'
-                )}
-              </motion.button>
-            </form>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Supplier (optional)</label>
+            <input
+              type="text"
+              name="supplier"
+              value={form.supplier}
+              onChange={handleChange}
+              className="w-full text-black px-5 py-4 border border-gray-200 rounded-2xl focus:border-teal-600 outline-none"
+              placeholder="e.g. Local Vendor"
+            />
           </div>
         </div>
 
-        <p className="mt-6 text-center text-sm text-[#8a8f99]">
-          New items start with zero current stock
-        </p>
-      </motion.div>
-    </div>
-  );
-}
+        {/* Description */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Description (optional)</label>
+          <textarea
+            name="description"
+            value={form.description}
+            onChange={handleChange}
+            rows={4}
+            className="w-full text-black px-5 py-4 border border-gray-200 rounded-2xl focus:border-teal-600 outline-none resize-none"
+            placeholder="Additional details about the item..."
+          />
+        </div>
 
-/* ---------- INPUT ---------- */
-function Input({ label, ...props }) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-[#cccccc] mb-1.5">
-        {label}
-      </label>
-      <input
-        {...props}
-        className="w-full px-4 py-3 bg-[#2d333b] border border-[#4a5058] rounded-lg text-[#eeeeee] placeholder-[#8a8f99] focus:outline-none focus:border-[#00adb5] focus:ring-1 focus:ring-[#00adb5]/30 transition-all duration-200"
-      />
+        {/* Active Toggle */}
+        <div className="flex items-center gap-4">
+          <div
+            onClick={() => setForm(prev => ({ ...prev, isActive: !prev.isActive }))}
+            className={`w-14 h-8 flex items-center rounded-full cursor-pointer transition-all duration-300 ${
+              form.isActive ? 'bg-teal-600' : 'bg-gray-300'
+            }`}
+          >
+            <div
+              className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-all duration-300 ${
+                form.isActive ? 'translate-x-7' : 'translate-x-1'
+              }`}
+            />
+          </div>
+          <span className="text-sm font-medium text-gray-700">
+            {form.isActive ? 'Item is Active' : 'Item is Inactive'}
+          </span>
+        </div>
+
+        {/* Submit */}
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-teal-600 hover:bg-teal-700 disabled:bg-teal-400 text-white font-semibold py-4 rounded-2xl text-lg transition-all shadow-lg flex items-center justify-center gap-3"
+        >
+          {loading ? (
+            <>
+              <Loader2 className="animate-spin h-6 w-6" />
+              Creating Item...
+            </>
+          ) : (
+            <>
+              <PackagePlus className="h-6 w-6" />
+              Create Inventory Item
+            </>
+          )}
+        </button>
+      </form>
+
+      <p className="text-center text-sm text-gray-500 mt-8">
+        New item will start with 0 current stock. You can adjust stock later.
+      </p>
     </div>
   );
 }

@@ -1,219 +1,154 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { apiRequest } from '@/services/api';
-import { Printer, Loader2, Building2, User, Phone, Calendar, Bed } from 'lucide-react';
+import { Printer, Loader2, Download } from 'lucide-react';
 
 export default function InvoicePage() {
   const { id } = useParams();
-  const router = useRouter();
-
   const [booking, setBooking] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchBooking = async () => {
-      try {
-        const res = await apiRequest(`/bookings/${id}`);
-        setBooking(res.data?.booking || null);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (id) fetchBooking();
+    apiRequest(`/bookings/${id}`)
+      .then(res => setBooking(res.data?.booking || null))
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [id]);
 
   if (loading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="flex items-center gap-3">
-          <Loader2 className="h-6 w-6 animate-spin text-[rgb(0,173,181)]" />
-          <p className="text-sm text-[rgb(57,62,70)]">Loading invoice...</p>
-        </div>
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-10 w-10 animate-spin text-teal-600" />
       </div>
     );
   }
 
   if (!booking) {
-    return (
-      <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-red-700">
-        Invoice not found
-      </div>
-    );
+    return <div className="text-center py-20 text-red-600">Invoice not found</div>;
   }
 
   const nights = Math.ceil(
-    (new Date(booking.dates.checkOut) - new Date(booking.dates.checkIn)) /
-      (1000 * 60 * 60 * 24)
+    (new Date(booking.dates.checkOut) - new Date(booking.dates.checkIn)) / 86400000
   );
 
   const subtotal = booking.pricing?.roomCharges || 0;
+  const extra = booking.pricing?.extraCharges || 0;
   const tax = booking.pricing?.tax || 0;
   const total = booking.pricing?.total || 0;
+  const paid = booking.advancePayment || 0;
+  const due = total - paid;
 
   return (
-    <div className="mx-auto max-w-3xl">
-      {/* Print Button - Hidden on Print */}
-      <div className="mb-6 flex justify-end print:hidden">
+    <div className="max-w-4xl mx-auto bg-white min-h-screen py-12 px-8 print:py-0 print:px-0">
+      {/* Print Button */}
+      <div className="flex justify-end mb-8 print:hidden">
         <button
           onClick={() => window.print()}
-          className="flex items-center gap-2 rounded-lg bg-[rgb(0,173,181)] px-4 py-2.5 text-sm font-medium text-white shadow-lg transition-all duration-200 hover:bg-[rgb(0,173,181)]/90 hover:shadow-xl"
+          className="flex items-center gap-3 bg-teal-600 hover:bg-teal-700 text-white px-8 py-3 rounded-2xl font-semibold shadow-lg transition-all"
         >
-          <Printer className="h-4 w-4" />
+          <Printer className="h-5 w-5" />
           Print Invoice
         </button>
       </div>
 
-      {/* Invoice Container */}
-      <div className="space-y-6 rounded-xl border-2 border-[rgb(57,62,70)]/20 bg-white p-8 shadow-xl print:border-0 print:shadow-none">
-        {/* HEADER */}
-        <div className="flex items-start justify-between border-b-2 border-[rgb(0,173,181)] pb-6">
+      <div className="border border-gray-300 rounded-2xl overflow-hidden shadow-xl print:shadow-none print:border-0">
+        {/* Header */}
+        <div className="bg-teal-700 text-white px-12 py-10 flex justify-between items-start">
           <div>
-            <h1 className="text-3xl font-bold text-[rgb(34,40,49)]">INVOICE</h1>
-            <p className="mt-1 text-sm text-[rgb(57,62,70)]">
-              Payment Receipt
-            </p>
+            <h1 className="text-5xl font-bold tracking-tighter">INVOICE</h1>
+            <p className="text-teal-200 mt-1 text-lg">#{booking.bookingNumber}</p>
           </div>
           <div className="text-right">
-            <div className="mb-2 inline-flex items-center gap-2 rounded-lg bg-[rgb(0,173,181)]/10 px-3 py-1.5">
-              <Building2 className="h-4 w-4 text-[rgb(0,173,181)]" />
-              <span className="text-sm font-medium text-[rgb(0,173,181)]">
-                Official Invoice
-              </span>
+            <div className="text-2xl font-semibold">{booking.hotel?.name}</div>
+            <div className="text-teal-200 text-sm mt-1">
+              {booking.hotel?.address?.street}, {booking.hotel?.address?.city}, {booking.hotel?.address?.state}
             </div>
+            {booking.hotel?.contact && <div className="text-teal-200 text-sm mt-1">+91 {booking.hotel.contact}</div>}
           </div>
         </div>
 
-        {/* HOTEL INFO */}
-        <div className="rounded-lg bg-[rgb(238,238,238)]/50 p-4">
-          <h2 className="mb-1 text-lg font-semibold text-[rgb(34,40,49)]">
-            {booking.hotel?.name || 'Hotel'}
-          </h2>
-          <p className="text-sm text-[rgb(57,62,70)]">
-            {booking.hotel?.address?.city || '—'}
-          </p>
+        {/* Guest & Invoice Info */}
+        <div className="grid grid-cols-2 gap-12 p-12 border-b">
+          <div>
+            <div className="uppercase text-xs tracking-widest text-gray-500 mb-2">Billed To</div>
+            <div className="font-semibold text-xl">{booking.guest?.name}</div>
+            <div className="text-gray-600 mt-1">{booking.guest?.phone}</div>
+            {booking.guest?.email && <div className="text-gray-600">{booking.guest.email}</div>}
+            {booking.guest?.idProof && (
+              <div className="mt-4 text-xs text-gray-500">
+                ID: {booking.guest.idProof.type.toUpperCase()} - {booking.guest.idProof.number}
+              </div>
+            )}
+          </div>
+
+          <div className="text-right space-y-1 text-sm">
+            <div><span className="text-gray-500">Invoice Date:</span> {new Date().toLocaleDateString('en-IN')}</div>
+            <div><span className="text-gray-500">Check-in:</span> {new Date(booking.dates.checkIn).toLocaleDateString('en-IN')}</div>
+            <div><span className="text-gray-500">Check-out:</span> {new Date(booking.dates.checkOut).toLocaleDateString('en-IN')}</div>
+            <div><span className="text-gray-500">Room:</span> {booking.room?.roomNumber} ({booking.room?.roomType})</div>
+          </div>
         </div>
 
-        {/* INFO GRID */}
-        <div className="grid grid-cols-2 gap-4 rounded-lg border border-[rgb(57,62,70)]/10 bg-white p-6">
-          <Info
-            label="Invoice No"
-            value={booking.bookingNumber}
-            icon={<Bed className="h-4 w-4" />}
-          />
-          <Info
-            label="Invoice Date"
-            value={new Date().toLocaleDateString()}
-            icon={<Calendar className="h-4 w-4" />}
-          />
-          <Info
-            label="Guest Name"
-            value={booking.guest?.name}
-            icon={<User className="h-4 w-4" />}
-          />
-          <Info
-            label="Phone"
-            value={booking.guest?.phone}
-            icon={<Phone className="h-4 w-4" />}
-          />
-          <Info label="Room" value={booking.room?.roomNumber} />
-          <Info label="Nights" value={nights} />
-        </div>
-
-        {/* CHARGES TABLE */}
-        <div className="overflow-hidden rounded-lg border border-[rgb(57,62,70)]/10">
-          <table className="w-full border-collapse text-sm">
+        {/* Charges Table */}
+        <div className="p-12">
+          <table className="w-full">
             <thead>
-              <tr className="bg-[rgb(57,62,70)] text-white">
-                <th className="px-4 py-3 text-left font-medium">Description</th>
-                <th className="px-4 py-3 text-right font-medium">Amount</th>
+              <tr className="border-b border-gray-300 text-left text-xs uppercase tracking-widest text-gray-500">
+                <th className="pb-4 font-medium">Description</th>
+                <th className="pb-4 text-right font-medium">Amount</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[rgb(57,62,70)]/10">
-              <tr className="transition-colors hover:bg-[rgb(238,238,238)]/30">
-                <td className="px-4 py-3 text-[rgb(34,40,49)]">
-                  Room Charges ({nights} nights)
-                </td>
-                <td className="px-4 py-3 text-right font-medium text-[rgb(34,40,49)]">
-                  ₹{subtotal}
-                </td>
+            <tbody className="divide-y text-lg">
+              <tr>
+                <td className="py-5">Room Charges ({nights} nights × ₹{booking.pricing?.basePrice || 0})</td>
+                <td className="py-5 text-right font-medium">₹{subtotal}</td>
               </tr>
-              <tr className="transition-colors hover:bg-[rgb(238,238,238)]/30">
-                <td className="px-4 py-3 text-[rgb(34,40,49)]">GST</td>
-                <td className="px-4 py-3 text-right font-medium text-[rgb(34,40,49)]">
-                  ₹{tax}
-                </td>
+              {extra > 0 && (
+                <tr>
+                  <td className="py-5 text-teal-600">Extra Guest Charges</td>
+                  <td className="py-5 text-right text-teal-600 font-medium">₹{extra}</td>
+                </tr>
+              )}
+              <tr>
+                <td className="py-5">GST (5%)</td>
+                <td className="py-5 text-right font-medium">₹{tax}</td>
               </tr>
-              <tr className="bg-[rgb(0,173,181)]/10">
-                <td className="px-4 py-3 text-lg font-bold text-[rgb(34,40,49)]">
-                  Total Amount
-                </td>
-                <td className="px-4 py-3 text-right text-lg font-bold text-[rgb(0,173,181)]">
-                  ₹{total}
-                </td>
+              <tr className="bg-teal-50 font-bold">
+                <td className="py-6 text-xl">Total Amount</td>
+                <td className="py-6 text-right text-2xl text-teal-700">₹{total}</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        {/* PAYMENT STATUS */}
-        <div className="rounded-lg border border-[rgb(57,62,70)]/10 bg-[rgb(238,238,238)]/30 p-4">
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="font-medium text-[rgb(57,62,70)]">
-                Payment Status:
-              </span>
-              <span className="font-semibold text-[rgb(34,40,49)]">
-                {booking.paymentStatus.replace('_', ' ').toUpperCase()}
-              </span>
+        {/* Payment Summary */}
+        <div className="bg-gray-50 px-12 py-10 flex justify-between items-center border-t">
+          <div>
+            <div className="text-sm text-gray-500">Payment Status</div>
+            <div className="text-2xl font-semibold capitalize mt-1">
+              {booking.paymentStatus.replace('_', ' ')}
             </div>
-            <div className="flex justify-between">
-              <span className="font-medium text-[rgb(57,62,70)]">
-                Amount Paid:
-              </span>
-              <span className="font-semibold text-[rgb(0,173,181)]">
-                ₹{booking.advancePayment}
-              </span>
-            </div>
-            {booking.advancePayment < total && (
-              <div className="flex justify-between border-t border-[rgb(57,62,70)]/20 pt-2">
-                <span className="font-medium text-[rgb(57,62,70)]">
-                  Balance Due:
-                </span>
-                <span className="font-semibold text-[rgb(34,40,49)]">
-                  ₹{total - booking.advancePayment}
-                </span>
+          </div>
+
+          <div className="text-right">
+            <div className="text-sm text-gray-500">Amount Paid</div>
+            <div className="text-3xl font-bold text-emerald-600">₹{paid}</div>
+            {due > 0 && (
+              <div className="text-orange-600 text-xl font-medium mt-3">
+                Balance Due: ₹{due}
               </div>
             )}
           </div>
         </div>
 
-        {/* FOOTER */}
-        <div className="border-t-2 border-[rgb(57,62,70)]/10 pt-6 text-center">
-          <p className="text-sm font-medium text-[rgb(0,173,181)]">
-            Thank you for staying with us!
-          </p>
-          <p className="mt-1 text-xs text-[rgb(57,62,70)]">
-            This is a computer-generated invoice and does not require a signature
-          </p>
+        {/* Footer */}
+        <div className="px-12 py-10 text-center text-xs text-gray-500 border-t">
+          Thank you for choosing <span className="font-semibold text-teal-700">{booking.hotel?.name}</span>.<br />
+          This is a computer-generated invoice and does not require a signature.
         </div>
       </div>
-    </div>
-  );
-}
-
-function Info({ label, value, icon }) {
-  return (
-    <div>
-      <div className="mb-1 flex items-center gap-2">
-        {icon && <div className="text-[rgb(57,62,70)]/50">{icon}</div>}
-        <p className="text-xs font-medium text-[rgb(57,62,70)]">{label}</p>
-      </div>
-      <p className="font-semibold text-[rgb(34,40,49)]">{value || '—'}</p>
     </div>
   );
 }

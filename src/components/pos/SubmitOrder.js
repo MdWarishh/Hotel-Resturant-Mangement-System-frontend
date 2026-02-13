@@ -40,18 +40,21 @@ export default function SubmitOrder({
         };
       }
 
-      const res = await apiRequest('/pos/orders', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
+     const res = await apiRequest('/pos/orders', {
+  method: 'POST',
+  body: JSON.stringify(payload),
+});
 
       if (!res?.success) {
         throw new Error(res?.message || 'Order failed');
       }
 
-      resetOrder();
+      // resetOrder();
 
-      if (onSuccess) onSuccess(res.data.order);
+     if (typeof onSuccess === 'function') {
+  // Use the correct data path from your API response
+  onSuccess(res.data?.order || res.data);
+}
     } catch (err) {
       console.error('Order submit failed:', err);
       alert(err.message || 'Failed to place order');

@@ -28,6 +28,28 @@ export const OrderProvider = ({ children }) => {
     });
   };
 
+
+  /**
+   * 🔄 Update item quantity directly
+   * Added to fix the "updateQuantity is not a function" error
+   */
+  const updateQuantity = (index, newQuantity) => {
+    setOrder((prev) => {
+      if (!prev || !prev.items[index]) return prev;
+      if (newQuantity < 1) return prev; // Prevents negative or zero quantity
+
+      let updatedItems = [...prev.items];
+      updatedItems[index] = {
+        ...updatedItems[index],
+        quantity: newQuantity,
+        subtotal: newQuantity * updatedItems[index].price,
+      };
+
+      return recalculate({ ...prev, items: updatedItems });
+    });
+  };
+
+
   /**
    * ➕ Add item to cart
    * Variant is mandatory if provided
@@ -113,27 +135,32 @@ export const OrderProvider = ({ children }) => {
    * 🔄 Recalculate pricing
    */
   const recalculate = (data) => {
-    const subtotal = data.items.reduce(
-      (sum, i) => sum + i.subtotal,
-      0
-    );
+  // 1. Calculate Subtotal from items
+  const subtotal = data.items.reduce(
+    (sum, i) => sum + (Number(i.subtotal) || 0), 
+    0
+  );
 
-    const discount = data.pricing.discount || 0;
-    const taxableAmount = Math.max(subtotal - discount, 0);
+  // 2. Safely get the discount
+  const discount = Number(data.pricing?.discount) || 0;
+  
+  // 3. Calculate taxable amount (after discount)
+  const taxableAmount = Math.max(subtotal - discount, 0);
 
-    const tax = Math.ceil((taxableAmount * GST_RATE) / 100);
-    const total = Math.ceil(taxableAmount + tax);
+  // 4. Calculate Tax (5%) and Total
+  const tax = Math.ceil((taxableAmount * GST_RATE) / 100);
+  const total = taxableAmount + tax;
 
-    return {
-      ...data,
-      pricing: {
-        subtotal,
-        discount,
-        tax,
-        total,
-      },
-    };
+  return {
+    ...data,
+    pricing: {
+      subtotal: subtotal,
+      discount: discount,
+      tax: tax,
+      total: total,
+    },
   };
+};
 
   /**
    * 🧹 Clear order (after submit)
@@ -148,6 +175,7 @@ export const OrderProvider = ({ children }) => {
       startOrder,
       addItem,
       removeItem,
+      updateQuantity,
       applyDiscount,
       resetOrder,
     }),

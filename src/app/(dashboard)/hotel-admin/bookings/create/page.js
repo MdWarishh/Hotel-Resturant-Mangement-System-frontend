@@ -4,368 +4,732 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiRequest } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
-import { ArrowLeft, Building2, DoorOpen, User, Mail, Phone, CreditCard, Users, Calendar, Loader2, AlertCircle } from 'lucide-react';
+import { 
+  ArrowLeft, Building2, DoorOpen, User, Mail, Phone, CreditCard, 
+  Users, Calendar, Loader2, AlertCircle, CheckCircle2, Info, Upload, Clock
+} from 'lucide-react';
 
 export default function CreateBookingPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const hotelId = user?.hotel?._id;
 
-  // 📹 State
-  const [hotels, setHotels] = useState([]);
   const [rooms, setRooms] = useState([]);
+  const [selectedRoom, setSelectedRoom] = useState(null);
+  const [pricingPreview, setPricingPreview] = useState(null);
+  const [errors, setErrors] = useState({});
+  const [idProofPreview, setIdProofPreview] = useState(null);
+
+  // 🔥 NEW: Booking type state
+  const [bookingType, setBookingType] = useState('daily'); // 'daily' or 'hourly'
 
   const [form, setForm] = useState({
-    hotel: '',
     room: '',
     guestName: '',
     guestEmail: '',
     guestPhone: '',
     idProofType: 'aadhar',
     idProofNumber: '',
+    idProofImage: null,
+    idProofImageBase64: '',
     adults: 1,
     children: 0,
     checkInDate: '',
+    checkInTime: '14:00', // 🔥 NEW: Check-in time
     checkOutDate: '',
-    roomCharges: '',
-    advancePayment: 0,
+    checkOutTime: '12:00', // 🔥 NEW: Check-out time
+    hours: 1, // 🔥 NEW: Duration for hourly bookings
+    specialRequests: '',
+    advancePayment: '',
+    source: 'Direct',
   });
 
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
 
-  /* -------------------- FETCH HOTELS -------------------- */
+  // Fetch rooms
   useEffect(() => {
-    const fetchHotels = async () => {
-      try {
-        const res = await apiRequest('/hotels');
-        setHotels(Array.isArray(res.data) ? res.data : []);
-      } catch (err) {
-        console.error('Failed to fetch hotels', err);
-      }
-    };
+    if (!hotelId) return;
+    apiRequest(`/rooms?hotel=${hotelId}&status=available`)
+      .then(res => setRooms(Array.isArray(res.data) ? res.data : []))
+      .catch(() => {});
+  }, [hotelId]);
 
-    fetchHotels();
-  }, []);
-
-  /* -------------------- FETCH ROOMS -------------------- */
+  // Room selection
   useEffect(() => {
-    const fetchRooms = async () => {
-      try {
-        const res = await apiRequest(
-          `/rooms?hotel=${form.hotel}&status=available`
-        );
-        setRooms(Array.isArray(res.data) ? res.data : []);
-      } catch (err) {
-        console.error('Failed to fetch rooms', err);
+    if (!form.room) {
+      setSelectedRoom(null);
+      setPricingPreview(null);
+      return;
+    }
+    const room = rooms.find(r => r._id === form.room);
+    setSelectedRoom(room || null);
+
+    // 🔥 NEW: If room doesn't support hourly, switch to daily
+    if (room && bookingType === 'hourly') {
+      const supportsHourly = room.features?.allowHourlyBooking && room.pricing?.hourlyRate > 0;
+      if (!supportsHourly) {
+        setBookingType('daily');
+        alert('This room does not support hourly bookings. Switched to daily mode.');
       }
-    };
+    }
+  }, [form.room, rooms, bookingType]);
 
-    if (form.hotel) fetchRooms();
-    else setRooms([]);
-  }, [form.hotel]);
+  // 🔥 NEW: Auto-calculate checkout for hourly bookings
+  useEffect(() => {
+    if (bookingType === 'hourly' && form.checkInDate && form.checkInTime && form.hours) {
+      const checkIn = new Date(`${form.checkInDate}T${form.checkInTime}`);
+      const checkOut = new Date(checkIn.getTime() + form.hours * 60 * 60 * 1000);
+      
+      setForm(prev => ({
+        ...prev,
+        checkOutDate: checkOut.toISOString().split('T')[0],
+        checkOutTime: checkOut.toTimeString().slice(0, 5),
+      }));
+    }
+  }, [bookingType, form.checkInDate, form.checkInTime, form.hours]);
 
-  /* -------------------- HANDLE CHANGE -------------------- */
+  // 🔥 UPDATED: Live pricing calculation
+  useEffect(() => {
+    if (!selectedRoom || !form.checkInDate) {
+      setPricingPreview(null);
+      return;
+    }
+
+    // For daily bookings, need checkout date
+    if (bookingType === 'daily' && !form.checkOutDate) {
+      setPricingPreview(null);
+      return;
+    }
+
+    let newErrors = {};
+
+    if (bookingType === 'daily') {
+      // Daily booking validation
+      const checkIn = new Date(form.checkInDate);
+      const checkOut = new Date(form.checkOutDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      if (checkIn < today) newErrors.checkInDate = "Check-in date cannot be in the past";
+      if (checkOut <= checkIn) newErrors.checkOutDate = "Check-out must be after check-in";
+
+      setErrors(prev => ({ ...prev, ...newErrors }));
+
+      if (Object.keys(newErrors).length > 0 || checkIn >= checkOut) {
+        setPricingPreview(null);
+        return;
+      }
+
+      // Calculate nights
+      const nights = Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
+      let roomCharges = selectedRoom.pricing.basePrice * nights;
+      let extraCharges = 0;
+
+      const extraAdults = Math.max(0, Number(form.adults) - (selectedRoom.capacity?.adults || 0));
+      extraCharges += extraAdults * (selectedRoom.pricing.extraAdultCharge || 0) * nights;
+
+      const extraChildren = Math.max(0, Number(form.children) - (selectedRoom.capacity?.children || 0));
+      extraCharges += extraChildren * (selectedRoom.pricing.extraChildCharge || 0) * nights;
+
+      const subtotal = roomCharges + extraCharges;
+      const tax = Math.ceil(subtotal * 0.05);
+      const total = subtotal + tax;
+
+      setPricingPreview({ duration: nights, roomCharges, extraCharges, subtotal, tax, total });
+    } else {
+      // 🔥 NEW: Hourly booking calculation
+      const duration = form.hours;
+      const roomCharges = (selectedRoom.pricing?.hourlyRate || 0) * duration;
+      const extraCharges = 0; // No extra charges for hourly bookings
+
+      const subtotal = roomCharges + extraCharges;
+      const tax = Math.ceil(subtotal * 0.05);
+      const total = subtotal + tax;
+
+      setPricingPreview({ duration, roomCharges, extraCharges, subtotal, tax, total });
+    }
+  }, [selectedRoom, form.checkInDate, form.checkOutDate, form.adults, form.children, form.hours, bookingType]);
+
   const handleChange = (e) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+    const { name, value } = e.target;
+    setForm(prev => ({ ...prev, [name]: value }));
+    setErrors(prev => ({ ...prev, [name]: '' }));
   };
 
-  /* -------------------- SUBMIT BOOKING -------------------- */
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size should be less than 5MB');
+      return;
+    }
+
+    if (!['image/jpeg', 'image/png', 'image/jpg'].includes(file.type)) {
+      alert('Only JPG/PNG files allowed');
+      return;
+    }
+
+    setForm(prev => ({ ...prev, idProofImage: file }));
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setForm(prev => ({ ...prev, idProofImageBase64: reader.result }));
+      setIdProofPreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const isFormValid = () => {
+    const baseValid = (
+      form.room &&
+      form.guestName.trim() &&
+      form.guestPhone.match(/^\d{10}$/) &&
+      form.checkInDate &&
+      pricingPreview &&
+      form.source
+    );
+
+    if (bookingType === 'daily') {
+      return baseValid && form.checkOutDate && !errors.checkInDate && !errors.checkOutDate;
+    } else {
+      return baseValid && form.hours >= 1 && form.hours <= 12;
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!isFormValid()) return;
     setLoading(true);
-    setError('');
 
     try {
+      // 🔥 UPDATED: Prepare dates based on booking type
+      let checkIn, checkOut;
+      
+      if (bookingType === 'hourly') {
+        checkIn = new Date(`${form.checkInDate}T${form.checkInTime}`);
+        checkOut = new Date(checkIn.getTime() + form.hours * 60 * 60 * 1000);
+      } else {
+        checkIn = new Date(`${form.checkInDate}T${form.checkInTime || '14:00'}`);
+        checkOut = new Date(`${form.checkOutDate}T${form.checkOutTime || '12:00'}`);
+      }
+
+      const payload = {
+        hotel: hotelId,
+        room: form.room,
+        bookingType, // 🔥 NEW
+        hours: bookingType === 'hourly' ? form.hours : undefined, // 🔥 NEW
+        guest: {
+          name: form.guestName.trim(),
+          phone: form.guestPhone,
+          email: form.guestEmail?.trim() || undefined,
+          idProof: form.idProofNumber
+            ? { 
+                type: form.idProofType, 
+                number: form.idProofNumber.trim(),
+                imageBase64: form.idProofImageBase64 || undefined
+              } 
+            : undefined,
+        },
+        numberOfGuests: { adults: Number(form.adults), children: Number(form.children) },
+        dates: {
+          checkIn: checkIn.toISOString(),
+          checkOut: checkOut.toISOString(),
+        },
+        advancePayment: Number(form.advancePayment) || 0,
+        specialRequests: form.specialRequests.trim(),
+        source: form.source,
+      };
+
       await apiRequest('/bookings', {
         method: 'POST',
-        body: JSON.stringify({
-          hotel: form.hotel,
-          room: form.room,
-
-          guest: {
-            name: form.guestName,
-            phone: form.guestPhone,
-            email: form.guestEmail || undefined,
-          },
-
-          numberOfGuests: {
-            adults: Number(form.adults),
-            children: 0,
-          },
-
-          dates: {
-            checkIn: new Date(form.checkInDate).toISOString(),
-            checkOut: new Date(form.checkOutDate).toISOString(),
-          },
-
-          pricing: {
-            roomCharges: 0,
-            extraCharges: 0,
-            discount: 0,
-          },
-
-          advancePayment: 0,
-        }),
+        body: JSON.stringify(payload),
       });
 
       router.push('/hotel-admin/bookings');
     } catch (err) {
-      setError(err.message || 'Failed to create booking');
+      alert(err.message || 'Failed to create booking');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-2xl">
-      {/* HEADER */}
-      <div className="mb-6 flex items-center justify-between rounded-xl border border-[rgb(57,62,70)]/10 bg-white p-6 shadow-lg">
-        <div>
-          <h2 className="text-2xl font-semibold text-[rgb(34,40,49)]">
-            New Booking
-          </h2>
-          <p className="mt-1 text-sm text-[rgb(57,62,70)]">
-            Create a new guest reservation
-          </p>
-        </div>
-        <button
-          onClick={() => router.back()}
-          className="group flex items-center gap-2 rounded-lg bg-[rgb(238,238,238)] px-4 py-2 text-sm font-medium text-[rgb(34,40,49)] transition-all duration-200 hover:bg-[rgb(57,62,70)] hover:text-white"
-        >
-          <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
-          Back
-        </button>
-      </div>
-
-      {/* ERROR */}
-      {error && (
-        <div className="mb-6 flex items-start gap-3 rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-700 animate-[shake_0.4s_ease-in-out]">
-          <AlertCircle className="h-5 w-5 flex-shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {/* FORM */}
-      <form
-        onSubmit={handleSubmit}
-        className="space-y-6 rounded-xl border border-[rgb(57,62,70)]/10 bg-white p-8 shadow-lg"
-      >
-        {/* HOTEL & ROOM SECTION */}
-        <FormSection title="Property Details" icon={<Building2 className="h-5 w-5" />}>
-          <Select
-            label="Hotel"
-            name="hotel"
-            value={form.hotel}
-            onChange={handleChange}
-            icon={<Building2 className="h-5 w-5" />}
-            required
-          >
-            <option value="">Select Hotel</option>
-            {hotels.map((hotel) => (
-              <option key={hotel._id} value={hotel._id}>
-                {hotel.name}
-              </option>
-            ))}
-          </Select>
-
-          <Select
-            label="Room"
-            name="room"
-            value={form.room}
-            onChange={handleChange}
-            icon={<DoorOpen className="h-5 w-5" />}
-            required
-            disabled={!form.hotel || rooms.length === 0}
-          >
-            <option value="">
-              {rooms.length === 0 ? 'No available rooms' : 'Select Room'}
-            </option>
-            {rooms.map((room) => (
-              <option key={room._id} value={room._id}>
-                Room {room.roomNumber}
-              </option>
-            ))}
-          </Select>
-        </FormSection>
-
-        {/* GUEST SECTION */}
-        <FormSection title="Guest Information" icon={<User className="h-5 w-5" />}>
-          <Input
-            label="Guest Name"
-            name="guestName"
-            value={form.guestName}
-            onChange={handleChange}
-            icon={<User className="h-5 w-5" />}
-            placeholder="John Doe"
-          />
-          <Input
-            label="Guest Email"
-            type="email"
-            name="guestEmail"
-            value={form.guestEmail}
-            onChange={handleChange}
-            icon={<Mail className="h-5 w-5" />}
-            placeholder="guest@example.com"
-          />
-          <Input
-            label="Guest Phone"
-            name="guestPhone"
-            value={form.guestPhone}
-            onChange={handleChange}
-            icon={<Phone className="h-5 w-5" />}
-            placeholder="+91 1234567890"
-          />
-          <Input
-            label="ID Proof Number"
-            name="idProofNumber"
-            value={form.idProofNumber}
-            onChange={handleChange}
-            icon={<CreditCard className="h-5 w-5" />}
-            placeholder="Enter ID proof number"
-          />
-        </FormSection>
-
-        {/* STAY DETAILS SECTION */}
-        <FormSection title="Stay Details" icon={<Calendar className="h-5 w-5" />}>
-          <Input
-            label="Check-in Date"
-            type="datetime-local"
-            name="checkInDate"
-            value={form.checkInDate}
-            onChange={handleChange}
-            icon={<Calendar className="h-5 w-5" />}
-          />
-          <Input
-            label="Check-out Date"
-            type="datetime-local"
-            name="checkOutDate"
-            value={form.checkOutDate}
-            onChange={handleChange}
-            icon={<Calendar className="h-5 w-5" />}
-          />
-          <Input
-            label="Adults"
-            type="number"
-            min="1"
-            name="adults"
-            value={form.adults}
-            onChange={handleChange}
-            icon={<Users className="h-5 w-5" />}
-          />
-        </FormSection>
-
-        {/* PAYMENT SECTION */}
-        <FormSection title="Payment Details" icon={<CreditCard className="h-5 w-5" />}>
-          <Input
-            label="Room Charges"
-            type="number"
-            name="roomCharges"
-            value={form.roomCharges}
-            onChange={handleChange}
-            icon={<CreditCard className="h-5 w-5" />}
-            placeholder="0"
-          />
-          <Input
-            label="Advance Payment"
-            type="number"
-            name="advancePayment"
-            value={form.advancePayment}
-            onChange={handleChange}
-            icon={<CreditCard className="h-5 w-5" />}
-            placeholder="0"
-          />
-        </FormSection>
-
-        {/* SUBMIT BUTTON */}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-lg bg-[rgb(0,173,181)] py-3 font-medium text-white shadow-lg transition-all duration-200 hover:bg-[rgb(0,173,181)]/90 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {loading ? (
-            <span className="flex items-center justify-center gap-2">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              Creating Booking...
-            </span>
-          ) : (
-            'Create Booking'
-          )}
-        </button>
-      </form>
-
-      <style jsx>{`
-        @keyframes shake {
-          0%, 100% { transform: translateX(0); }
-          25% { transform: translateX(-5px); }
-          75% { transform: translateX(5px); }
-        }
-      `}</style>
-    </div>
-  );
-}
-
-/* -------------------- FORM SECTION -------------------- */
-function FormSection({ title, icon, children }) {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 border-b border-[rgb(57,62,70)]/10 pb-2">
-        <div className="text-[rgb(0,173,181)]">{icon}</div>
-        <h3 className="text-lg font-semibold text-[rgb(34,40,49)]">{title}</h3>
-      </div>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">{children}</div>
-    </div>
-  );
-}
-
-/* -------------------- INPUT -------------------- */
-function Input({ label, icon, ...props }) {
-  return (
-    <div className="group">
-      <label className="mb-2 block text-sm font-medium text-[rgb(34,40,49)]">
-        {label}
-      </label>
-      <div className="relative">
-        {icon && (
-          <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[rgb(57,62,70)]/50 transition-colors duration-200 group-focus-within:text-[rgb(0,173,181)]">
-            {icon}
+    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <button
+              onClick={() => router.back()}
+              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4 transition-colors"
+            >
+              <ArrowLeft className="h-5 w-5" />
+              <span className="font-medium">Back</span>
+            </button>
+            <h1 className="text-4xl font-bold text-gray-900">Create New Booking</h1>
+            <p className="mt-2 text-gray-600">Reserve a room for your guest</p>
           </div>
-        )}
-        <input
-          {...props}
-          required
-          className={`w-full rounded-lg border border-[rgb(57,62,70)]/20 bg-[rgb(238,238,238)]/30 py-2.5 pr-4 text-[rgb(34,40,49)] placeholder-[rgb(57,62,70)]/50 transition-all duration-200 focus:border-[rgb(0,173,181)] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[rgb(0,173,181)]/20 disabled:cursor-not-allowed disabled:opacity-60 ${
-            icon ? 'pl-11' : 'pl-4'
-          }`}
-        />
-      </div>
-    </div>
-  );
-}
+        </div>
 
-/* -------------------- SELECT -------------------- */
-function Select({ label, icon, children, ...props }) {
-  return (
-    <div className="group">
-      <label className="mb-2 block text-sm font-medium text-[rgb(34,40,49)]">
-        {label}
-      </label>
-      <div className="relative">
-        {icon && (
-          <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[rgb(57,62,70)]/50 transition-colors duration-200 group-focus-within:text-[rgb(0,173,181)]">
-            {icon}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="lg:col-span-8">
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-8">
+              <form onSubmit={handleSubmit} className="space-y-8">
+                {/* 🔥 NEW: Booking Type Selector */}
+                <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <Clock className="h-5 w-5 text-teal-600" />
+                    Booking Type
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setBookingType('daily')}
+                      className={`p-4 rounded-xl border-2 transition-all ${
+                        bookingType === 'daily'
+                          ? 'border-teal-600 bg-teal-50 shadow-md'
+                          : 'border-gray-300 hover:border-gray-400'
+                      }`}
+                    >
+                      <Calendar className={`h-8 w-8 mx-auto mb-2 ${bookingType === 'daily' ? 'text-teal-600' : 'text-gray-400'}`} />
+                      <div className="text-center">
+                        <h4 className="font-semibold text-gray-900">Daily Booking</h4>
+                        <p className="text-sm text-gray-600 mt-1">Book by nights</p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setBookingType('hourly')}
+                      className={`p-4 rounded-xl border-2 transition-all ${
+                        bookingType === 'hourly'
+                          ? 'border-teal-600 bg-teal-50 shadow-md'
+                          : 'border-gray-300 hover:border-gray-400'
+                      }`}
+                    >
+                      <Clock className={`h-8 w-8 mx-auto mb-2 ${bookingType === 'hourly' ? 'text-teal-600' : 'text-gray-400'}`} />
+                      <div className="text-center">
+                        <h4 className="font-semibold text-gray-900">Hourly Booking</h4>
+                        <p className="text-sm text-gray-600 mt-1">Book by hours (1-12)</p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Room Selection */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <Building2 className="h-5 w-5 text-teal-600" /> Select Room
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {rooms.map(room => {
+                      // 🔥 NEW: Check if room supports hourly booking
+                      const supportsHourly = room.features?.allowHourlyBooking && room.pricing?.hourlyRate > 0;
+                      const isDisabled = bookingType === 'hourly' && !supportsHourly;
+
+                      return (
+                        <button
+                          key={room._id}
+                          type="button"
+                          onClick={() => !isDisabled && setForm({ ...form, room: room._id })}
+                          disabled={isDisabled}
+                          className={`p-5 rounded-xl border-2 text-left transition-all ${
+                            form.room === room._id
+                              ? 'border-teal-600 bg-teal-50 shadow-md'
+                              : isDisabled
+                              ? 'border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed'
+                              : 'border-gray-300 hover:border-teal-400'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <DoorOpen className="h-6 w-6 text-teal-600" />
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${
+                              room.status === 'available' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                            }`}>
+                              {room.status}
+                            </span>
+                          </div>
+                          <h4 className="text-xl font-bold text-gray-900">{room.roomNumber}</h4>
+                          <p className="text-sm text-gray-600 mb-3">{room.roomType}</p>
+                          <div className="space-y-1">
+                            <p className="text-lg font-semibold text-teal-700">₹{room.pricing?.basePrice?.toLocaleString()}/night</p>
+                            {supportsHourly && (
+                              <p className="text-xs text-gray-600">₹{room.pricing?.hourlyRate}/hour</p>
+                            )}
+                            {isDisabled && (
+                              <p className="text-xs text-red-600 mt-2">No hourly booking</p>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {errors.room && <p className="mt-2 text-red-600 text-sm">{errors.room}</p>}
+                </div>
+
+                {/* Booking Source */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Booking Source</h3>
+                  <select
+                    name="source"
+                    value={form.source}
+                    onChange={handleChange}
+                    className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                    required
+                  >
+                    <option value="Direct">Direct</option>
+                    <option value="OYO">OYO</option>
+                    <option value="MakeMyTrip">MakeMyTrip</option>
+                    <option value="Booking.com">Booking.com</option>
+                    <option value="Goibibo">Goibibo</option>
+                    <option value="Airbnb">Airbnb</option>
+                    <option value="Agoda">Agoda</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                {/* Guest Information */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <User className="h-5 w-5 text-teal-600" /> Guest Information
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-base font-medium text-gray-800 mb-2">Full Name <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        name="guestName"
+                        value={form.guestName}
+                        onChange={handleChange}
+                        className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                        placeholder="John Doe"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-base font-medium text-gray-800 mb-2">Phone Number <span className="text-red-500">*</span></label>
+                      <input
+                        type="tel"
+                        name="guestPhone"
+                        value={form.guestPhone}
+                        onChange={handleChange}
+                        className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                        placeholder="9876543210"
+                        maxLength={10}
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-base font-medium text-gray-800 mb-2">Email (optional)</label>
+                      <input
+                        type="email"
+                        name="guestEmail"
+                        value={form.guestEmail}
+                        onChange={handleChange}
+                        className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                        placeholder="john@example.com"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-base font-medium text-gray-800 mb-2">ID Proof Type</label>
+                      <select
+                        name="idProofType"
+                        value={form.idProofType}
+                        onChange={handleChange}
+                        className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                      >
+                        <option value="aadhar">Aadhar Card</option>
+                        <option value="passport">Passport</option>
+                        <option value="driving_license">Driving License</option>
+                        <option value="voter_id">Voter ID</option>
+                      </select>
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-base font-medium text-gray-800 mb-2">ID Proof Number (optional)</label>
+                      <input
+                        type="text"
+                        name="idProofNumber"
+                        value={form.idProofNumber}
+                        onChange={handleChange}
+                        className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                        placeholder="Enter ID number"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-base font-medium text-gray-800 mb-2">
+                        Upload ID Proof Photo (optional)
+                      </label>
+                      <div className="flex items-center gap-4">
+                        <label className="cursor-pointer flex-1">
+                          <div className="flex items-center justify-center gap-3 border-2 border-dashed border-gray-300 rounded-xl p-6 hover:border-teal-500 transition-colors bg-gray-50">
+                            <Upload className="h-6 w-6 text-gray-500" />
+                            <span className="text-gray-600">
+                              {form.idProofImage ? form.idProofImage.name : 'Click to upload JPG/PNG (max 5MB)'}
+                            </span>
+                          </div>
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png"
+                            onChange={handleImageChange}
+                            className="hidden"
+                          />
+                        </label>
+
+                        {idProofPreview && (
+                          <div className="w-32 h-32 rounded-lg overflow-hidden border border-gray-300 shadow-sm">
+                            <img 
+                              src={idProofPreview} 
+                              alt="ID Proof Preview" 
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 🔥 UPDATED: Dates & Duration Section */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <Calendar className="h-5 w-5 text-teal-600" />
+                    {bookingType === 'hourly' ? 'Booking Time & Duration' : 'Dates'}
+                  </h3>
+
+                  {bookingType === 'daily' ? (
+                    // Daily booking UI
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-base font-medium text-gray-800 mb-2">Check-in Date <span className="text-red-500">*</span></label>
+                        <input
+                          type="date"
+                          name="checkInDate"
+                          value={form.checkInDate}
+                          onChange={handleChange}
+                          min={new Date().toISOString().split('T')[0]}
+                          className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                          required
+                        />
+                        {errors.checkInDate && <p className="mt-1 text-red-600 text-sm">{errors.checkInDate}</p>}
+                      </div>
+
+                      <div>
+                        <label className="block text-base font-medium text-gray-800 mb-2">Check-out Date <span className="text-red-500">*</span></label>
+                        <input
+                          type="date"
+                          name="checkOutDate"
+                          value={form.checkOutDate}
+                          onChange={handleChange}
+                          className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                          required
+                        />
+                        {errors.checkOutDate && <p className="mt-1 text-red-600 text-sm">{errors.checkOutDate}</p>}
+                      </div>
+                    </div>
+                  ) : (
+                    // 🔥 NEW: Hourly booking UI
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div>
+                          <label className="block text-base font-medium text-gray-800 mb-2">Start Date <span className="text-red-500">*</span></label>
+                          <input
+                            type="date"
+                            name="checkInDate"
+                            value={form.checkInDate}
+                            onChange={handleChange}
+                            min={new Date().toISOString().split('T')[0]}
+                            className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-base font-medium text-gray-800 mb-2">Start Time <span className="text-red-500">*</span></label>
+                          <input
+                            type="time"
+                            name="checkInTime"
+                            value={form.checkInTime}
+                            onChange={handleChange}
+                            className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-base font-medium text-gray-800 mb-2">Duration (Hours) <span className="text-red-500">*</span></label>
+                          <select
+                            name="hours"
+                            value={form.hours}
+                            onChange={handleChange}
+                            className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                            required
+                          >
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(h => (
+                              <option key={h} value={h}>{h} {h === 1 ? 'Hour' : 'Hours'}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {form.checkOutDate && form.checkOutTime && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                          <p className="text-sm text-blue-900">
+                            <strong>End Time:</strong> {new Date(`${form.checkOutDate}T${form.checkOutTime}`).toLocaleString('en-IN', { 
+                              dateStyle: 'medium', 
+                              timeStyle: 'short' 
+                            })}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Number of Guests */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-base font-medium text-gray-800 mb-2">Adults <span className="text-red-500">*</span></label>
+                    <input
+                      type="number"
+                      min="1"
+                      name="adults"
+                      value={form.adults}
+                      onChange={handleChange}
+                      className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-base font-medium text-gray-800 mb-2">Children</label>
+                    <input
+                      type="number"
+                      min="0"
+                      name="children"
+                      value={form.children}
+                      onChange={handleChange}
+                      className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                    />
+                  </div>
+                </div>
+
+                {/* Additional */}
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-base font-medium text-gray-800 mb-2">Special Requests (optional)</label>
+                    <textarea
+                      name="specialRequests"
+                      value={form.specialRequests}
+                      onChange={handleChange}
+                      rows={3}
+                      className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200 resize-none"
+                      placeholder="Early check-in, extra bed, dietary preferences, etc."
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-base font-medium text-gray-800 mb-2">Advance Payment (₹) - optional</label>
+                    <input
+                      type="number"
+                      name="advancePayment"
+                      value={form.advancePayment}
+                      onChange={handleChange}
+                      min="0"
+                      step="1"
+                      className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading || !isFormValid()}
+                  className={`mt-8 w-full py-4 px-6 rounded-xl text-white font-semibold text-lg transition-all shadow-lg
+                    ${isFormValid() 
+                      ? 'bg-teal-600 hover:bg-teal-700' 
+                      : 'bg-gray-400 cursor-not-allowed'}`}
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-3">
+                      <Loader2 className="animate-spin h-6 w-6" />
+                      Processing...
+                    </span>
+                  ) : (
+                    'Confirm Booking & Reserve Room'
+                  )}
+                </button>
+              </form>
+            </div>
           </div>
-        )}
-        <select
-          {...props}
-          className={`w-full rounded-lg border border-[rgb(57,62,70)]/20 bg-[rgb(238,238,238)]/30 py-2.5 pr-4 text-[rgb(34,40,49)] transition-all duration-200 focus:border-[rgb(0,173,181)] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[rgb(0,173,181)]/20 disabled:cursor-not-allowed disabled:opacity-60 ${
-            icon ? 'pl-11' : 'pl-4'
-          }`}
-        >
-          {children}
-        </select>
+
+          {/* Pricing Sidebar */}
+          <div className="lg:col-span-4">
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-8 sticky top-8">
+              <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-3">
+                <CheckCircle2 className="h-6 w-6 text-teal-600" /> Booking Summary
+              </h3>
+
+              {selectedRoom && pricingPreview ? (
+                <div className="space-y-5">
+                  <div className="p-5 bg-teal-50 rounded-xl border border-teal-100">
+                    <div className="text-sm text-teal-800 mb-1">
+                      Room Charges ({pricingPreview.duration} {bookingType === 'hourly' 
+                        ? (pricingPreview.duration === 1 ? 'hour' : 'hours')
+                        : (pricingPreview.duration === 1 ? 'night' : 'nights')
+                      })
+                    </div>
+                    <div className="text-3xl font-bold text-gray-900">₹{pricingPreview.roomCharges.toLocaleString()}</div>
+
+                    {pricingPreview.extraCharges > 0 && (
+                      <div className="mt-3 text-sm text-teal-700">
+                        + ₹{pricingPreview.extraCharges.toLocaleString()} (extra guests)
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-3 text-gray-700">
+                    <div className="flex justify-between">
+                      <span>Subtotal</span>
+                      <span className="font-medium">₹{pricingPreview.subtotal.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>GST (5%)</span>
+                      <span className="font-medium">₹{pricingPreview.tax.toLocaleString()}</span>
+                    </div>
+                    <div className="border-t border-gray-200 pt-4 mt-2 flex justify-between text-xl font-bold text-teal-700">
+                      <span>Total Amount</span>
+                      <span>₹{pricingPreview.total.toLocaleString()}</span>
+                    </div>
+
+                    {Number(form.advancePayment) > 0 && (
+                      <div className="flex justify-between text-green-700 font-medium pt-2 border-t border-gray-200">
+                        <span>Advance Paid</span>
+                        <span>- ₹{Number(form.advancePayment).toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-6 p-4 bg-blue-50 rounded-xl text-sm text-blue-800">
+                    Room status will change to <strong>RESERVED</strong> upon confirmation.
+                  </div>
+                </div>
+              ) : (
+                <div className="py-12 text-center text-gray-500">
+                  <Info className="mx-auto h-12 w-12 mb-4 opacity-70" />
+                  <p className="font-medium">Select room and dates to preview pricing</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

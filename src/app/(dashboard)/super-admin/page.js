@@ -1,6 +1,36 @@
-import { Building2, Users, UserCheck, TrendingUp } from 'lucide-react';
+'use client'
+import { apiRequest } from '@/services/api';
+import { Building2, Users, UserCheck, TrendingUp, Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 export default function SuperAdminDashboard() {
+
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        // You will need to create this endpoint in your backend
+        const res = await apiRequest('/super-admin/stats');
+        setStats(res.data);
+      } catch (err) {
+        console.error("Failed to fetch dashboard stats:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchStats();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-[rgb(0,173,181)]" />
+      </div>
+    );
+  }
+
   return (
     <div>
       <h2 className="mb-6 text-2xl font-semibold text-[rgb(34,40,49)]">
@@ -10,22 +40,22 @@ export default function SuperAdminDashboard() {
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card 
           title="Total Hotels" 
-          value="—" 
+          value={stats?.totalHotels || 0} 
           icon={<Building2 className="h-6 w-6" />}
         />
         <Card 
           title="Total Users" 
-          value="—" 
+          value={stats?.totalUsers || 0}
           icon={<Users className="h-6 w-6" />}
         />
         <Card 
           title="Active Staff" 
-          value="—" 
+          value={stats?.activeStaff || 0}
           icon={<UserCheck className="h-6 w-6" />}
         />
         <Card 
           title="Revenue" 
-          value="—" 
+          value={`₹${stats?.totalRevenue?.toLocaleString('en-IN') || 0}`} 
           icon={<TrendingUp className="h-6 w-6" />}
         />
       </div>
