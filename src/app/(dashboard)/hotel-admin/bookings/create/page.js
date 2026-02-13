@@ -20,8 +20,7 @@ export default function CreateBookingPage() {
   const [errors, setErrors] = useState({});
   const [idProofPreview, setIdProofPreview] = useState(null);
 
-  // 🔥 NEW: Booking type state
-  const [bookingType, setBookingType] = useState('daily'); // 'daily' or 'hourly'
+  const [bookingType, setBookingType] = useState('daily');
 
   const [form, setForm] = useState({
     room: '',
@@ -35,10 +34,10 @@ export default function CreateBookingPage() {
     adults: 1,
     children: 0,
     checkInDate: '',
-    checkInTime: '14:00', // 🔥 NEW: Check-in time
+    checkInTime: '14:00',
     checkOutDate: '',
-    checkOutTime: '12:00', // 🔥 NEW: Check-out time
-    hours: 1, // 🔥 NEW: Duration for hourly bookings
+    checkOutTime: '12:00',
+    hours: 1,
     specialRequests: '',
     advancePayment: '',
     source: 'Direct',
@@ -46,7 +45,6 @@ export default function CreateBookingPage() {
 
   const [loading, setLoading] = useState(false);
 
-  // Fetch rooms
   useEffect(() => {
     if (!hotelId) return;
     apiRequest(`/rooms?hotel=${hotelId}&status=available`)
@@ -54,7 +52,6 @@ export default function CreateBookingPage() {
       .catch(() => {});
   }, [hotelId]);
 
-  // Room selection
   useEffect(() => {
     if (!form.room) {
       setSelectedRoom(null);
@@ -63,18 +60,8 @@ export default function CreateBookingPage() {
     }
     const room = rooms.find(r => r._id === form.room);
     setSelectedRoom(room || null);
+  }, [form.room, rooms]);
 
-    // 🔥 NEW: If room doesn't support hourly, switch to daily
-    if (room && bookingType === 'hourly') {
-      const supportsHourly = room.features?.allowHourlyBooking && room.pricing?.hourlyRate > 0;
-      if (!supportsHourly) {
-        setBookingType('daily');
-        alert('This room does not support hourly bookings. Switched to daily mode.');
-      }
-    }
-  }, [form.room, rooms, bookingType]);
-
-  // 🔥 NEW: Auto-calculate checkout for hourly bookings
   useEffect(() => {
     if (bookingType === 'hourly' && form.checkInDate && form.checkInTime && form.hours) {
       const checkIn = new Date(`${form.checkInDate}T${form.checkInTime}`);
@@ -88,14 +75,13 @@ export default function CreateBookingPage() {
     }
   }, [bookingType, form.checkInDate, form.checkInTime, form.hours]);
 
-  // 🔥 UPDATED: Live pricing calculation
+  // 🔥 UPDATED: Pricing calculation with auto-calculated hourly rate
   useEffect(() => {
     if (!selectedRoom || !form.checkInDate) {
       setPricingPreview(null);
       return;
     }
 
-    // For daily bookings, need checkout date
     if (bookingType === 'daily' && !form.checkOutDate) {
       setPricingPreview(null);
       return;
@@ -104,7 +90,6 @@ export default function CreateBookingPage() {
     let newErrors = {};
 
     if (bookingType === 'daily') {
-      // Daily booking validation
       const checkIn = new Date(form.checkInDate);
       const checkOut = new Date(form.checkOutDate);
       const today = new Date();
@@ -120,7 +105,6 @@ export default function CreateBookingPage() {
         return;
       }
 
-      // Calculate nights
       const nights = Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
       let roomCharges = selectedRoom.pricing.basePrice * nights;
       let extraCharges = 0;
@@ -137,16 +121,20 @@ export default function CreateBookingPage() {
 
       setPricingPreview({ duration: nights, roomCharges, extraCharges, subtotal, tax, total });
     } else {
-      // 🔥 NEW: Hourly booking calculation
+      // 🔥 UPDATED: Auto-calculate hourly rate if not set (40% of daily rate)
       const duration = form.hours;
-      const roomCharges = (selectedRoom.pricing?.hourlyRate || 0) * duration;
-      const extraCharges = 0; // No extra charges for hourly bookings
+      const hourlyRate = selectedRoom.pricing?.hourlyRate > 0 
+        ? selectedRoom.pricing.hourlyRate 
+        : Math.ceil(selectedRoom.pricing.basePrice * 0.4);
+      
+      const roomCharges = hourlyRate * duration;
+      const extraCharges = 0;
 
       const subtotal = roomCharges + extraCharges;
       const tax = Math.ceil(subtotal * 0.05);
       const total = subtotal + tax;
 
-      setPricingPreview({ duration, roomCharges, extraCharges, subtotal, tax, total });
+      setPricingPreview({ duration, roomCharges, extraCharges, subtotal, tax, total, hourlyRate });
     }
   }, [selectedRoom, form.checkInDate, form.checkOutDate, form.adults, form.children, form.hours, bookingType]);
 
@@ -203,7 +191,6 @@ export default function CreateBookingPage() {
     setLoading(true);
 
     try {
-      // 🔥 UPDATED: Prepare dates based on booking type
       let checkIn, checkOut;
       
       if (bookingType === 'hourly') {
@@ -217,8 +204,8 @@ export default function CreateBookingPage() {
       const payload = {
         hotel: hotelId,
         room: form.room,
-        bookingType, // 🔥 NEW
-        hours: bookingType === 'hourly' ? form.hours : undefined, // 🔥 NEW
+        bookingType,
+        hours: bookingType === 'hourly' ? form.hours : undefined,
         guest: {
           name: form.guestName.trim(),
           phone: form.guestPhone,
@@ -257,7 +244,6 @@ export default function CreateBookingPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="mb-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <button
@@ -276,7 +262,7 @@ export default function CreateBookingPage() {
           <div className="lg:col-span-8">
             <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-8">
               <form onSubmit={handleSubmit} className="space-y-8">
-                {/* 🔥 NEW: Booking Type Selector */}
+                {/* Booking Type Selector */}
                 <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                     <Clock className="h-5 w-5 text-teal-600" />
@@ -317,28 +303,26 @@ export default function CreateBookingPage() {
                   </div>
                 </div>
 
-                {/* Room Selection */}
+                {/* Room Selection - 🔥 UPDATED: All rooms now available for both modes */}
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                     <Building2 className="h-5 w-5 text-teal-600" /> Select Room
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {rooms.map(room => {
-                      // 🔥 NEW: Check if room supports hourly booking
-                      const supportsHourly = room.features?.allowHourlyBooking && room.pricing?.hourlyRate > 0;
-                      const isDisabled = bookingType === 'hourly' && !supportsHourly;
+                      // 🔥 UPDATED: Calculate hourly rate on-the-fly if not set
+                      const hourlyRate = room.pricing?.hourlyRate > 0 
+                        ? room.pricing.hourlyRate 
+                        : Math.ceil(room.pricing.basePrice * 0.4);
 
                       return (
                         <button
                           key={room._id}
                           type="button"
-                          onClick={() => !isDisabled && setForm({ ...form, room: room._id })}
-                          disabled={isDisabled}
+                          onClick={() => setForm({ ...form, room: room._id })}
                           className={`p-5 rounded-xl border-2 text-left transition-all ${
                             form.room === room._id
                               ? 'border-teal-600 bg-teal-50 shadow-md'
-                              : isDisabled
-                              ? 'border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed'
                               : 'border-gray-300 hover:border-teal-400'
                           }`}
                         >
@@ -354,12 +338,7 @@ export default function CreateBookingPage() {
                           <p className="text-sm text-gray-600 mb-3">{room.roomType}</p>
                           <div className="space-y-1">
                             <p className="text-lg font-semibold text-teal-700">₹{room.pricing?.basePrice?.toLocaleString()}/night</p>
-                            {supportsHourly && (
-                              <p className="text-xs text-gray-600">₹{room.pricing?.hourlyRate}/hour</p>
-                            )}
-                            {isDisabled && (
-                              <p className="text-xs text-red-600 mt-2">No hourly booking</p>
-                            )}
+                            <p className="text-xs text-gray-600">₹{hourlyRate}/hour</p>
                           </div>
                         </button>
                       );
@@ -389,7 +368,7 @@ export default function CreateBookingPage() {
                   </select>
                 </div>
 
-                {/* Guest Information */}
+                {/* Guest Information - Same as before */}
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                     <User className="h-5 w-5 text-teal-600" /> Guest Information
@@ -496,7 +475,7 @@ export default function CreateBookingPage() {
                   </div>
                 </div>
 
-                {/* 🔥 UPDATED: Dates & Duration Section */}
+                {/* Dates & Duration Section */}
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                     <Calendar className="h-5 w-5 text-teal-600" />
@@ -504,7 +483,6 @@ export default function CreateBookingPage() {
                   </h3>
 
                   {bookingType === 'daily' ? (
-                    // Daily booking UI
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div>
                         <label className="block text-base font-medium text-gray-800 mb-2">Check-in Date <span className="text-red-500">*</span></label>
@@ -534,7 +512,6 @@ export default function CreateBookingPage() {
                       </div>
                     </div>
                   ) : (
-                    // 🔥 NEW: Hourly booking UI
                     <div className="space-y-6">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div>
@@ -613,7 +590,7 @@ export default function CreateBookingPage() {
                       type="number"
                       min="0"
                       name="children"
-                      value={form.children}
+                      value="form.children"
                       onChange={handleChange}
                       className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
                     />
@@ -685,6 +662,9 @@ export default function CreateBookingPage() {
                         ? (pricingPreview.duration === 1 ? 'hour' : 'hours')
                         : (pricingPreview.duration === 1 ? 'night' : 'nights')
                       })
+                      {bookingType === 'hourly' && pricingPreview.hourlyRate && (
+                        <span className="block text-xs mt-1">@ ₹{pricingPreview.hourlyRate}/hour</span>
+                      )}
                     </div>
                     <div className="text-3xl font-bold text-gray-900">₹{pricingPreview.roomCharges.toLocaleString()}</div>
 
