@@ -25,7 +25,8 @@ export default function PublicHotelsPage() {
       const response = await getAllHotels(filters);
       setHotels(response.data.hotels || []);
     } catch (err) {
-      setError(err.message || 'Failed to load hotels');
+  console.error('Fetch hotels error:', err);
+  setError(err.message || 'Failed to load hotels');
     } finally {
       setLoading(false);
     }
