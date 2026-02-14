@@ -31,6 +31,8 @@ export const AuthProvider = ({ children }) => {
       body: JSON.stringify({ email, password }),
     });
 
+    
+
     const authToken = res.data.token;
     localStorage.setItem('token', authToken);
     setToken(authToken); // 🔥 SET TOKEN IN STATE
