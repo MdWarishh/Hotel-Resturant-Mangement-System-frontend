@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { apiRequest } from '@/services/api';
 import { 
   Plus, Loader2, Search, RefreshCw, X, ChevronLeft, ChevronRight, 
-  Package, AlertTriangle, TrendingUp, DollarSign, Eye 
+  Package, AlertTriangle, TrendingUp, DollarSign, Eye, 
+  Upload
 } from 'lucide-react';
 
 export default function InventoryListPage() {
@@ -83,6 +84,14 @@ export default function InventoryListPage() {
             <p className="text-sm md:text-base text-gray-600 mt-1">Manage hotel & restaurant stock</p>
           </div>
         </div>
+               
+         <Link
+    href="/hotel-admin/inventory/bulk-upload"
+     className="w-full sm:w-auto flex items-center justify-center gap-2 md:gap-3 bg-teal-600 hover:bg-teal-700 text-white font-semibold px-4 md:px-8 py-3 md:py-4 rounded-xl md:rounded-2xl shadow-lg transition-all text-sm md:text-base"
+  >
+    <Upload className="h-4 w-4" />
+    Bulk Upload
+  </Link>
 
         <Link
           href="/hotel-admin/inventory/create"

@@ -19,9 +19,15 @@ export default function OrderSuccessPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
-  // Inside component, add state
-const [showFeedback, setShowFeedback] = useState(false);
-const [selectedItem, setSelectedItem] = useState(null);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+
+  // 🔥 FIX: Calculate totals from items
+  const [calculatedTotals, setCalculatedTotals] = useState({
+    subtotal: 0,
+    tax: 0,
+    total: 0
+  });
 
   useEffect(() => {
     if (!orderNumber) {
@@ -35,13 +41,42 @@ const [selectedItem, setSelectedItem] = useState(null);
     try {
       setLoading(true);
       const response = await trackOrder(hotelCode, orderNumber);
-      setOrder(response.data.order);
+      const orderData = response.data.order;
+      setOrder(orderData);
+
+      // 🔥 FIX: Calculate totals if not present
+      calculateTotals(orderData);
     } catch (err) {
       console.error('Error fetching order:', err);
       setError(err.message || 'Failed to load order details');
     } finally {
       setLoading(false);
     }
+  };
+
+  // 🔥 NEW FUNCTION: Calculate totals from items
+  const calculateTotals = (orderData) => {
+    if (!orderData || !orderData.items || orderData.items.length === 0) {
+      return;
+    }
+
+    // Calculate subtotal from items
+    const subtotal = orderData.items.reduce((sum, item) => {
+      const itemTotal = (item.price || 0) * (item.quantity || 0);
+      return sum + itemTotal;
+    }, 0);
+
+    // Calculate tax (5% GST)
+    const tax = subtotal * 0.05;
+
+    // Calculate total
+    const total = subtotal + tax;
+
+    setCalculatedTotals({
+      subtotal: subtotal,
+      tax: tax,
+      total: total
+    });
   };
 
   const copyOrderNumber = () => {
@@ -99,6 +134,11 @@ const [selectedItem, setSelectedItem] = useState(null);
     );
   }
 
+  // 🔥 FIX: Use backend values if available, otherwise use calculated values
+  const subtotal = order.subtotal || order.pricing?.subtotal || calculatedTotals.subtotal;
+  const tax = order.tax || order.pricing?.tax || calculatedTotals.tax;
+  const total = order.total || order.totalAmount || order.pricing?.total || calculatedTotals.total;
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Success Animation Header */}
@@ -119,7 +159,7 @@ const [selectedItem, setSelectedItem] = useState(null);
       </div>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Order Number Card - Most Important */}
+        {/* Order Number Card */}
         <div className="bg-white rounded-xl shadow-lg border-2 border-orange-500 p-6 mb-6">
           <div className="text-center">
             <p className="text-gray-600 text-sm mb-2">Your Order Number</p>
@@ -174,33 +214,22 @@ const [selectedItem, setSelectedItem] = useState(null);
                   </div>
                 </div>
                 <div>
-                  <p className="font-semibold text-gray-900">Pending Confirmation</p>
-                  <p className="text-sm text-gray-600">
-                    Your order is waiting for restaurant approval
+                  <p className="font-semibold text-gray-900 capitalize">
+                    {order.status?.replace('-', ' ') || 'Pending'}
                   </p>
+                  <p className="text-sm text-gray-600">Your order is being prepared</p>
                 </div>
               </div>
-
-              {order.estimatedPreparationTime && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span>Estimated preparation: <strong>{order.estimatedPreparationTime} mins</strong></span>
-                  </div>
-                </div>
-              )}
             </div>
 
-            {/* Order Type & Details */}
+            {/* Order Info */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">Order Details</h3>
+              <h3 className="text-lg font-bold text-gray-900 mb-4">Order Information</h3>
               
               <div className="space-y-3">
                 {/* Order Type */}
-                <div className="flex items-center gap-3 pb-3 border-b border-gray-200">
-                  <span className="text-2xl">{getOrderTypeIcon(order.orderType)}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{getOrderTypeIcon(order.type)}</span>
                   <div>
                     <p className="text-sm text-gray-600">Order Type</p>
                     <p className="font-semibold text-gray-900">{getOrderTypeLabel(order.orderType)}</p>
@@ -208,28 +237,24 @@ const [selectedItem, setSelectedItem] = useState(null);
                 </div>
 
                 {/* Table/Room Number */}
-                {order.tableNumber && (
-                  <div className="flex items-center gap-3 pb-3 border-b border-gray-200">
-                    <span className="text-2xl">🪑</span>
+                {(order.tableNumber || order.roomNumber) && (
+                  <div className="flex items-center gap-3 pt-3 border-t border-gray-200">
+                    <span className="text-2xl">
+                      {order.type === 'room-service' ? '🏨' : '🪑'}
+                    </span>
                     <div>
-                      <p className="text-sm text-gray-600">Table Number</p>
-                      <p className="font-semibold text-gray-900">{order.tableNumber}</p>
-                    </div>
-                  </div>
-                )}
-
-                {order.roomNumber && (
-                  <div className="flex items-center gap-3 pb-3 border-b border-gray-200">
-                    <span className="text-2xl">🚪</span>
-                    <div>
-                      <p className="text-sm text-gray-600">Room Number</p>
-                      <p className="font-semibold text-gray-900">{order.roomNumber}</p>
+                      <p className="text-sm text-gray-600">
+                        {order.type === 'room-service' ? 'Room Number' : 'Table Number'}
+                      </p>
+                      <p className="font-semibold text-gray-900">
+                        {order.roomNumber || order.tableNumber}
+                      </p>
                     </div>
                   </div>
                 )}
 
                 {/* Customer Details */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-start gap-3 pt-3 border-t border-gray-200">
                   <span className="text-2xl">👤</span>
                   <div>
                     <p className="text-sm text-gray-600">Customer Name</p>
@@ -262,15 +287,19 @@ const [selectedItem, setSelectedItem] = useState(null);
               </div>
             </div>
 
-            <button
-  onClick={() => {
-    setSelectedItem(order.items[0].menuItem); // First item
-    setShowFeedback(true);
-  }}
-  className="px-6 py-3 bg-blue-600 text-white rounded-lg"
->
-  ⭐ Rate Your Food
-</button>
+            {/* Feedback Button */}
+            {order.items && order.items.length > 0 && (
+              <button
+                onClick={() => {
+                  setSelectedItem(order.items[0].menuItem);
+                  setShowFeedback(true);
+                }}
+                className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold flex items-center justify-center gap-2"
+              >
+                <span>⭐</span>
+                Rate Your Food
+              </button>
+            )}
 
             {/* Order Items */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -297,7 +326,7 @@ const [selectedItem, setSelectedItem] = useState(null);
                       <div className="flex items-start justify-between">
                         <div>
                           <h4 className="font-semibold text-gray-900">
-                            {item.menuItem?.name || 'Item'}
+                            {item.menuItem?.name || item.name || 'Item'}
                           </h4>
                           {item.variant && (
                             <p className="text-sm text-gray-600">{item.variant}</p>
@@ -310,7 +339,7 @@ const [selectedItem, setSelectedItem] = useState(null);
                         </div>
                         <div className="text-right">
                           <p className="font-semibold text-orange-600">
-                            {formatPrice(item.price * item.quantity)}
+                            {formatPrice((item.price || 0) * (item.quantity || 0))}
                           </p>
                           <p className="text-sm text-gray-600">Qty: {item.quantity}</p>
                         </div>
@@ -331,15 +360,15 @@ const [selectedItem, setSelectedItem] = useState(null);
               <div className="space-y-3 mb-6">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Subtotal</span>
-                  <span className="font-semibold">{formatPrice(order.subtotal)}</span>
+                  <span className=" text-black font-semibold">{formatPrice(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">GST (5%)</span>
-                  <span className="font-semibold">{formatPrice(order.tax)}</span>
+                  <span className="text-black font-semibold">{formatPrice(tax)}</span>
                 </div>
-                <div className="flex justify-between text-lg font-bold pt-3 border-t border-gray-200">
+                <div className="text-black flex justify-between text-lg font-bold pt-3 border-t border-gray-200">
                   <span>Total Amount</span>
-                  <span className="text-orange-600">{formatPrice(order.total)}</span>
+                  <span className="text-orange-600">{formatPrice(total)}</span>
                 </div>
               </div>
 
@@ -394,14 +423,15 @@ const [selectedItem, setSelectedItem] = useState(null);
           </div>
         </div>
 
+        {/* Feedback Modal */}
         <FeedbackModal
-  isOpen={showFeedback}
-  onClose={() => setShowFeedback(false)}
-  hotelCode={hotelCode}
-  menuItem={selectedItem}
-  customer={order.customer}
-  orderNumber={orderNumber}
-/>
+          isOpen={showFeedback}
+          onClose={() => setShowFeedback(false)}
+          hotelCode={hotelCode}
+          menuItem={selectedItem}
+          customer={order?.customer}
+          orderNumber={orderNumber}
+        />
       </div>
     </div>
   );

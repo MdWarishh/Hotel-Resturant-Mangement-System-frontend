@@ -229,12 +229,12 @@ if (!res.ok) {
               required
               className="text-gray-900 w-full pl-12 pr-6 py-4 border border-gray-200 rounded-2xl focus:border-teal-600 outline-none bg-white"
             >
-            <option value="manager">Manager</option>
-  <option value="receptionist">Receptionist / Front Desk</option>
+            {/* <option value="manager">Manager</option> */}
+  {/* <option value="receptionist">Receptionist / Front Desk</option> */}
   <option value="cashier">Cashier</option>
   <option value="kitchen_staff">Kitchen Staff</option> {/* Changed from kitchen */}
-  <option value="housekeeping">Housekeeping</option>
-  <option value="waiter">Waiter / Restaurant Service</option>
+  {/* <option value="housekeeping">Housekeeping</option> */}
+  {/* <option value="waiter">Waiter / Restaurant Service</option> */}
             </select>
           </div>
           <p className="text-xs text-gray-500 mt-2">Hotel Admin can only create these roles</p>

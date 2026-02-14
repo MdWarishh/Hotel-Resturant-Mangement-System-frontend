@@ -190,7 +190,7 @@ export default function CheckoutPage() {
           <div className="flex items-center gap-4">
             <button
               onClick={() => router.back()}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="text-black p-2 hover:bg-gray-500 rounded-lg transition-colors bg-gray-300"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -267,7 +267,7 @@ export default function CheckoutPage() {
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
                     placeholder="Enter your name"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+                    className="text-black w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
                   />
                 </div>
 
@@ -281,7 +281,7 @@ export default function CheckoutPage() {
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                     placeholder="10-digit mobile number"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+                    className="text-black w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
                   />
                 </div>
 
@@ -295,7 +295,7 @@ export default function CheckoutPage() {
                     value={customerEmail}
                     onChange={(e) => setCustomerEmail(e.target.value)}
                     placeholder="your@email.com"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+                    className="text-black w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
                   />
                 </div>
 
@@ -310,7 +310,7 @@ export default function CheckoutPage() {
                       onChange={(e) => setCustomerAddress(e.target.value)}
                       placeholder="Enter complete delivery address"
                       rows={3}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none resize-none"
+                      className="text-black w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none resize-none"
                     />
                     <p className="text-xs text-gray-500 mt-1">Minimum 10 characters</p>
                   </div>
@@ -416,7 +416,7 @@ export default function CheckoutPage() {
                 onChange={(e) => setSpecialInstructions(e.target.value)}
                 placeholder="Any special requests? (e.g., extra spicy, no onions, etc.)"
                 rows={3}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none resize-none"
+                className="text-black w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none resize-none"
               />
             </div>
           </div>
@@ -430,7 +430,7 @@ export default function CheckoutPage() {
               <div className="space-y-3 mb-4 max-h-64 overflow-y-auto">
                 {cart.map((item) => (
                   <div key={`${item._id}-${item.variant || 'default'}`} className="flex gap-3">
-                    <div className="relative w-16 h-16 rounded-lg overflow-hidden bg-gray-200 flex-shrink-0">
+                    <div className="text-black relative w-16 h-16 rounded-lg overflow-hidden bg-gray-200 flex-shrink-0">
                       {item.images && item.images[0] ? (
                         <Image src={item.images[0]} alt={item.name} fill className="object-cover" />
                       ) : (
@@ -457,13 +457,13 @@ export default function CheckoutPage() {
               <div className="space-y-2 pt-4 border-t border-gray-200">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Subtotal</span>
-                  <span className="font-semibold">{formatPrice(subtotal)}</span>
+                  <span className="text-black font-semibold">{formatPrice(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">GST (5%)</span>
-                  <span className="font-semibold">{formatPrice(tax)}</span>
+                  <span className="text-black font-semibold">{formatPrice(tax)}</span>
                 </div>
-                <div className="flex justify-between text-lg font-bold pt-2 border-t border-gray-200">
+                <div className="flex justify-between text-lg font-bold pt-2 border-t border-gray-200 text-black">
                   <span>Total</span>
                   <span className="text-orange-600">{formatPrice(total)}</span>
                 </div>

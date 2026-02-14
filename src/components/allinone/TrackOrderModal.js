@@ -91,7 +91,7 @@ export default function TrackOrderModal({ isOpen, onClose, hotelCode }) {
                 setError('');
               }}
               placeholder="e.g., ORD2402101234"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none font-mono"
+              className="text-black w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none font-mono"
               onKeyPress={(e) => {
                 if (e.key === 'Enter') {
                   handleTrackOrder();
