@@ -15,8 +15,10 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/a
  * Get all active hotels
  * @param {Object} params - { city, search }
  */
+console.log("API BASE URL:", API_BASE_URL);
 export const getAllHotels = async (params = {}) => {
   try {
+    console.log("API BASE URL:", API_BASE_URL);
     const queryParams = new URLSearchParams(params).toString();
     const url = `${API_BASE_URL}/allinone/hotels${queryParams ? `?${queryParams}` : ''}`;
     
