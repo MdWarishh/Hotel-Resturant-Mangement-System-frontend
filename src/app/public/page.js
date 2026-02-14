@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { getAllHotels } from '@/services/publicApi';
 import Link from 'next/link';
 import Image from 'next/image';
-
+export const dynamic = 'force-static';
 export default function PublicHotelsPage() {
   const [hotels, setHotels] = useState([]);
   const [loading, setLoading] = useState(true);
