@@ -3,7 +3,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect } from 'react';
-import { calculateCartTotal } from '@/services/publicApi';
+import { calculateCartTotal } from '@/services/allinonApi';
 
 const CartContext = createContext();
 

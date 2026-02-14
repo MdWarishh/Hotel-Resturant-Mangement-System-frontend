@@ -4,9 +4,9 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { trackOrder, formatPrice } from '@/services/publicApi';
+import { trackOrder, formatPrice } from '@/services/allinonApi';
 import Image from 'next/image';
-import FeedbackModal from '@/components/public/FeedbackModal';
+import FeedbackModal from '@/components/allinone/FeedbackModal';
 
 export default function OrderSuccessPage() {
   const params = useParams();
@@ -25,7 +25,7 @@ const [selectedItem, setSelectedItem] = useState(null);
 
   useEffect(() => {
     if (!orderNumber) {
-      router.push(`/public/${hotelCode}`);
+      router.push(`/allinone/${hotelCode}`);
       return;
     }
     fetchOrderDetails();
@@ -89,7 +89,7 @@ const [selectedItem, setSelectedItem] = useState(null);
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Order Not Found</h2>
           <p className="text-gray-600 mb-6">{error || 'Unable to load order details'}</p>
           <button
-            onClick={() => router.push(`/public/${hotelCode}`)}
+            onClick={() => router.push(`/allinone/${hotelCode}`)}
             className="w-full py-3 bg-orange-600 text-white font-semibold rounded-lg hover:bg-orange-700 transition-colors"
           >
             Back to Menu
@@ -346,7 +346,7 @@ const [selectedItem, setSelectedItem] = useState(null);
               {/* Action Buttons */}
               <div className="space-y-3">
                 <button
-                  onClick={() => router.push(`/public/${hotelCode}/track/${orderNumber}`)}
+                  onClick={() => router.push(`/allinone/${hotelCode}/track/${orderNumber}`)}
                   className="w-full py-3 bg-orange-600 text-white font-semibold rounded-lg hover:bg-orange-700 transition-colors flex items-center justify-center gap-2"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -356,7 +356,7 @@ const [selectedItem, setSelectedItem] = useState(null);
                 </button>
 
                 <button
-                  onClick={() => router.push(`/public/${hotelCode}`)}
+                  onClick={() => router.push(`/allinone/${hotelCode}`)}
                   className="w-full py-3 bg-white border-2 border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

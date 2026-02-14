@@ -1,9 +1,9 @@
-// frontend/services/publicApi.js
+// frontend/services/allinoneApi.js
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 /**
- * Public API Service
+ * AllInOne API Service
  * No authentication required
  */
 

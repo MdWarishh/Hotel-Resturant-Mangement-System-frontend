@@ -10,7 +10,7 @@ import {
   getAvailableTables, 
   getAvailableRooms,
   formatPrice 
-} from '@/services/publicApi';
+} from '@/services/allinonApi';
 import Image from 'next/image';
 
 export default function CheckoutPage() {
@@ -44,7 +44,7 @@ export default function CheckoutPage() {
   // Redirect if cart is empty (BUT NOT if order was just placed)
   useEffect(() => {
     if (cart.length === 0 && !isOrderPlaced) {
-      router.push(`/public/${hotelCode}`);
+      router.push(`/allinone/${hotelCode}`);
     }
   }, [cart, hotelCode, router, isOrderPlaced]);
 
@@ -168,7 +168,7 @@ export default function CheckoutPage() {
 
       // Navigate to success page with order number
       const orderNumber = response.data.order.orderNumber;
-      router.push(`/public/${hotelCode}/order-success?orderNumber=${orderNumber}`);
+      router.push(`/allinone/${hotelCode}/order-success?orderNumber=${orderNumber}`);
 
     } catch (err) {
       setError(err.message || 'Failed to place order. Please try again.');

@@ -1,12 +1,14 @@
 'use client';
 
-
 import { useState, useEffect } from 'react';
-import { getAllHotels } from '@/services/publicApi';
+// import { getAllHotels } from '@/services/allinoneApi';
 import Link from 'next/link';
 import Image from 'next/image';
+import { getAllHotels } from '@/services/allinonApi';
+
 export const dynamic = 'force-static';
-export default function PublicHotelsPage() {
+
+export default function AllInOneHotelsPage() {
   const [hotels, setHotels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -25,8 +27,8 @@ export default function PublicHotelsPage() {
       const response = await getAllHotels(filters);
       setHotels(response.data.hotels || []);
     } catch (err) {
-  console.error('Fetch hotels error:', err);
-  setError(err.message || 'Failed to load hotels');
+      console.error('Fetch hotels error:', err);
+      setError(err.message || 'Failed to load hotels');
     } finally {
       setLoading(false);
     }
@@ -167,7 +169,7 @@ export default function PublicHotelsPage() {
 // Hotel Card Component
 function HotelCard({ hotel }) {
   return (
-    <Link href={`/public/${hotel.code}`}>
+    <Link href={`/allinone/${hotel.code}`}>
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer group h-full">
         {/* Hotel Image */}
         <div className="relative h-48 bg-gradient-to-br from-orange-400 to-orange-600 overflow-hidden">

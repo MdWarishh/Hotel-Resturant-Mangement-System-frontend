@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { apiRequest } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
-import { Plus, Loader2, DoorOpen, Bed, Edit3, Search, X, Trash2 } from 'lucide-react';
+import { Plus, Loader2, DoorOpen, Bed, Edit3, Search, X, Trash2, Upload } from 'lucide-react';
 
 const STATUS_OPTIONS = [
   'available',
@@ -234,6 +234,13 @@ const toggleSelectRoom = (roomId) => {
         <h2 className="text-2xl font-bold text-[rgb(34,40,49)] dark:text-black">Rooms</h2>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Link
+    href="/hotel-admin/rooms/bulk-upload"
+    className="flex items-center gap-2 px-5 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl text-sm font-medium transition-all shadow-sm"
+  >
+    <Upload className="h-4 w-4" />
+    Bulk Upload
+  </Link>
           <Link
             href="/hotel-admin/rooms/create"
             className="group inline-flex items-center justify-center gap-2 rounded-lg bg-[rgb(0,173,181)] px-4 py-2.5 text-sm font-medium text-white shadow-lg transition-all hover:bg-[rgb(0,173,181)]/90 hover:shadow-xl"

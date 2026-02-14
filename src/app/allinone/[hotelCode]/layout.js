@@ -1,4 +1,4 @@
-// frontend/app/public/[hotelCode]/layout.js
+// frontend/app/allinone/[hotelCode]/layout.js
 
 'use client';
 

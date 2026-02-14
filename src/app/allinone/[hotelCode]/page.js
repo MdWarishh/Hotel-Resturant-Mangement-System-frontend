@@ -1,22 +1,24 @@
-// frontend/app/public/[hotelCode]/page.js
+// frontend/app/allinone/[hotelCode]/page.js
 
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { getPublicMenu, getHotelByCode, formatPrice } from '@/services/publicApi';
+import { useState, useEffect, use } from 'react';
+import { useRouter } from 'next/navigation';
+// ✅ Next.js 15: useParams() ki jagah use(params) use karo
+import { getPublicMenu, getHotelByCode, formatPrice } from '@/services/allinonApi';
 import { useCart } from '@/context/CartContext';
 import Image from 'next/image';
 import axios from 'axios';
-import CartDrawer from '@/components/public/CartDrawer';
-import TrackOrderModal from '@/components/public/TrackOrderModal';
-import StarRating from '@/components/public/StarRating';
+import CartDrawer from '@/components/allinone/CartDrawer';
+import TrackOrderModal from '@/components/allinone/TrackOrderModal';
+import StarRating from '@/components/allinone/StarRating';
 
-export default function PublicMenuPage() {
-  const params = useParams();
-  const router = useRouter();
-  const hotelCode = params.hotelCode;
+// ✅ FIXED: useParams() ki jagah params prop use karo (Next.js 15 style)
+export default function PublicMenuPage({ params }) {
+  // ✅ Next.js 15: params ek Promise hai, use() se unwrap karo
+  const { hotelCode } = use(params);
   
+  const router = useRouter();
   const { addToCart, getItemCount, openCart, isOpen } = useCart();
 
   const [hotel, setHotel] = useState(null);
@@ -30,12 +32,12 @@ export default function PublicMenuPage() {
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
-  // Fetch hotel & menu on mount
   useEffect(() => {
-    fetchData();
+    if (hotelCode) {
+      fetchData();
+    }
   }, [hotelCode]);
 
-  // Fetch ratings when menu is loaded
   useEffect(() => {
     if (menu.length > 0) {
       fetchAllRatings();
@@ -47,7 +49,6 @@ export default function PublicMenuPage() {
       setLoading(true);
       setError(null);
 
-      // Fetch hotel details and menu in parallel
       const [hotelResponse, menuResponse] = await Promise.all([
         getHotelByCode(hotelCode),
         getPublicMenu(hotelCode),
@@ -55,8 +56,7 @@ export default function PublicMenuPage() {
 
       setHotel(hotelResponse.data.hotel);
       setMenu(menuResponse.data.menu || []);
-      
-      // Set first category as selected
+
       if (menuResponse.data.menu && menuResponse.data.menu.length > 0) {
         setSelectedCategory(menuResponse.data.menu[0].category._id);
       }
@@ -69,27 +69,22 @@ export default function PublicMenuPage() {
 
   const fetchAllRatings = async () => {
     const ratings = {};
-    
-    // Get all items from all categories
     const allItems = menu.flatMap(cat => cat.items);
-    
-    // Fetch ratings for each item
+
     for (const item of allItems) {
       try {
         const response = await axios.get(
-          `${API_URL}/public/${hotelCode}/items/${item._id}/feedback`
+          `${API_URL}/allinone/${hotelCode}/items/${item._id}/feedback`
         );
         ratings[item._id] = response.data.data.stats;
       } catch (err) {
-        // If error, set default rating
         ratings[item._id] = { averageRating: 0, totalReviews: 0 };
       }
     }
-    
+
     setItemRatings(ratings);
   };
 
-  // Filter menu based on search
   const filteredMenu = menu.map((categoryData) => ({
     ...categoryData,
     items: categoryData.items.filter((item) =>
@@ -98,7 +93,6 @@ export default function PublicMenuPage() {
     ),
   })).filter((categoryData) => categoryData.items.length > 0);
 
-  // Get selected category data
   const activeCategoryData = selectedCategory
     ? filteredMenu.find((cat) => cat.category._id === selectedCategory)
     : filteredMenu[0];
@@ -122,7 +116,7 @@ export default function PublicMenuPage() {
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Oops!</h2>
           <p className="text-gray-600 mb-6">{error}</p>
           <button
-            onClick={() => router.push('/public')}
+            onClick={() => router.push('/allinone')}
             className="px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-semibold"
           >
             Back to Restaurants
@@ -134,14 +128,13 @@ export default function PublicMenuPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header - Sticky */}
+      {/* Header */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-40 text-black">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            {/* Back Button & Hotel Info */}
             <div className="flex items-center gap-4">
               <button
-                onClick={() => router.push('/public')}
+                onClick={() => router.push('/allinone')}
                 className="p-2 hover:bg-gray-300 rounded-lg transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -154,7 +147,6 @@ export default function PublicMenuPage() {
               </div>
             </div>
 
-            {/* Cart Button */}
             <button
               onClick={openCart}
               className="relative px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2"
@@ -191,7 +183,7 @@ export default function PublicMenuPage() {
         </div>
       </div>
 
-      {/* Categories Tabs - Sticky */}
+      {/* Categories Tabs */}
       <div className="bg-white border-b sticky top-[136px] z-20 overflow-x-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex gap-2 py-3">
@@ -216,7 +208,6 @@ export default function PublicMenuPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24">
         {activeCategoryData ? (
           <div>
-            {/* Category Header */}
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-gray-900">
                 {activeCategoryData.category.name}
@@ -228,12 +219,11 @@ export default function PublicMenuPage() {
               )}
             </div>
 
-            {/* Items Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {activeCategoryData.items.map((item) => (
-                <MenuItem 
-                  key={item._id} 
-                  item={item} 
+                <MenuItem
+                  key={item._id}
+                  item={item}
                   onAddToCart={addToCart}
                   rating={itemRatings[item._id]}
                 />
@@ -243,9 +233,7 @@ export default function PublicMenuPage() {
         ) : (
           <div className="text-center py-20">
             <div className="text-6xl mb-4">🔍</div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              No items found
-            </h3>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">No items found</h3>
             <p className="text-gray-600">Try adjusting your search</p>
           </div>
         )}
@@ -263,12 +251,9 @@ export default function PublicMenuPage() {
         <span>Track Order</span>
       </button>
 
-      {/* Cart Drawer */}
       <CartDrawer isOpen={isOpen} hotelCode={hotelCode} hotel={hotel} />
-
-      {/* Track Order Modal */}
-      <TrackOrderModal 
-        isOpen={trackModalOpen} 
+      <TrackOrderModal
+        isOpen={trackModalOpen}
         onClose={() => setTrackModalOpen(false)}
         hotelCode={hotelCode}
       />
@@ -281,7 +266,6 @@ function MenuItem({ item, onAddToCart, rating }) {
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [quantity, setQuantity] = useState(1);
 
-  // Get price based on selected variant
   const getPrice = () => {
     if (selectedVariant && item.variants?.length > 0) {
       const variant = item.variants.find((v) => v.name === selectedVariant);
@@ -300,22 +284,14 @@ function MenuItem({ item, onAddToCart, rating }) {
       images: item.images,
       preparationTime: item.preparationTime,
     });
-    
-    // Reset
     setQuantity(1);
   };
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
-      {/* Item Image */}
       {item.images && item.images.length > 0 ? (
         <div className="relative h-48 bg-gray-200">
-          <Image
-            src={item.images[0]}
-            alt={item.name}
-            fill
-            className="object-cover"
-          />
+          <Image src={item.images[0]} alt={item.name} fill className="object-cover" />
         </div>
       ) : (
         <div className="h-48 bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center">
@@ -324,7 +300,6 @@ function MenuItem({ item, onAddToCart, rating }) {
       )}
 
       <div className="p-4">
-        {/* Name & Type */}
         <div className="flex items-start justify-between mb-2">
           <h3 className="text-lg font-bold text-gray-900 flex-1">{item.name}</h3>
           {item.type && (
@@ -336,7 +311,6 @@ function MenuItem({ item, onAddToCart, rating }) {
           )}
         </div>
 
-        {/* Rating */}
         {rating && (
           <div className="mb-2">
             <StarRating
@@ -347,14 +321,10 @@ function MenuItem({ item, onAddToCart, rating }) {
           </div>
         )}
 
-        {/* Description */}
         {item.description && (
-          <p className="text-sm text-gray-600 mb-3 line-clamp-2">
-            {item.description}
-          </p>
+          <p className="text-sm text-gray-600 mb-3 line-clamp-2">{item.description}</p>
         )}
 
-        {/* Tags */}
         {item.tags && item.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-3">
             {item.tags.slice(0, 3).map((tag, index) => (
@@ -365,7 +335,6 @@ function MenuItem({ item, onAddToCart, rating }) {
           </div>
         )}
 
-        {/* Variants */}
         {item.variants && item.variants.length > 0 && (
           <div className="mb-3">
             <p className="text-xs font-semibold text-gray-700 mb-2">Select Size:</p>
@@ -387,36 +356,20 @@ function MenuItem({ item, onAddToCart, rating }) {
           </div>
         )}
 
-        {/* Price & Add to Cart */}
         <div className="flex items-center justify-between pt-3 border-t border-gray-100">
           <div>
-            <p className="text-2xl font-bold text-orange-600">
-              {formatPrice(getPrice())}
-            </p>
+            <p className="text-2xl font-bold text-orange-600">{formatPrice(getPrice())}</p>
             {item.preparationTime && (
               <p className="text-xs text-gray-500">⏱️ {item.preparationTime} min</p>
             )}
           </div>
 
           <div className="text-black flex items-center gap-2">
-            {/* Quantity Selector */}
             <div className="flex items-center border border-gray-300 rounded-lg">
-              <button
-                onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                className="px-2 py-1 hover:bg-gray-100"
-              >
-                -
-              </button>
+              <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="px-2 py-1 hover:bg-gray-100">-</button>
               <span className="px-3 py-1 font-semibold">{quantity}</span>
-              <button
-                onClick={() => setQuantity(quantity + 1)}
-                className="px-2 py-1 hover:bg-gray-100"
-              >
-                +
-              </button>
+              <button onClick={() => setQuantity(quantity + 1)} className="px-2 py-1 hover:bg-gray-100">+</button>
             </div>
-
-            {/* Add Button */}
             <button
               onClick={handleAddToCart}
               className="px-4 py-2 bg-orange-600 text-white font-semibold rounded-lg hover:bg-orange-700 transition-colors"
