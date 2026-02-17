@@ -9,7 +9,7 @@ export default function Topbar() {
   return (
     <header className="flex h-16 items-center justify-between border-b border-[rgb(57,62,70)]/10 bg-white px-6 shadow-sm">
       <h1 className="text-lg font-semibold text-[rgb(34,40,49)]">
-        Super Admin Dashboard
+        Dashboard
       </h1>
 
       <div className="flex items-center gap-4">

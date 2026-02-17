@@ -51,7 +51,16 @@ export default function EditHotelPage() {
     const fetchHotel = async () => {
       try {
         const res = await apiRequest(`/hotels/${id}`);
-        const hotel = res.data;
+        
+        // Handle different API response structures:
+        // res.data directly = hotel object, OR res.data.hotel = hotel object
+        const hotel = res?.data?.hotel || res?.data || res;
+
+        if (!hotel || !hotel.name) {
+          setErrors(['Hotel data not found. Check API response structure.']);
+          setLoading(false);
+          return;
+        }
 
         setForm({
           name: hotel.name || '',
@@ -513,4 +522,4 @@ export default function EditHotelPage() {
       </motion.div>
     </div>
   );
-}   
+}
