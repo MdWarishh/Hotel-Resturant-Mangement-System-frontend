@@ -6,7 +6,8 @@ import { apiRequest } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { 
   ArrowLeft, Building2, DoorOpen, User, Mail, Phone, CreditCard, 
-  Users, Calendar, Loader2, AlertCircle, CheckCircle2, Info, Upload, Clock
+  Users, Calendar, Loader2, AlertCircle, CheckCircle2, Info, Upload, Clock,
+  DollarSign
 } from 'lucide-react';
 
 export default function CreateBookingPage() {
@@ -41,6 +42,8 @@ export default function CreateBookingPage() {
     specialRequests: '',
     advancePayment: '',
     source: 'Direct',
+    manualPrice: '',
+    useManualPrice: false,
   });
 
   const [loading, setLoading] = useState(false);
@@ -75,7 +78,6 @@ export default function CreateBookingPage() {
     }
   }, [bookingType, form.checkInDate, form.checkInTime, form.hours]);
 
-  // 🔥 UPDATED: Pricing calculation with auto-calculated hourly rate
   useEffect(() => {
     if (!selectedRoom || !form.checkInDate) {
       setPricingPreview(null);
@@ -121,27 +123,52 @@ export default function CreateBookingPage() {
 
       setPricingPreview({ duration: nights, roomCharges, extraCharges, subtotal, tax, total });
     } else {
-      // 🔥 UPDATED: Auto-calculate hourly rate if not set (40% of daily rate)
       const duration = form.hours;
-      const hourlyRate = selectedRoom.pricing?.hourlyRate > 0 
-        ? selectedRoom.pricing.hourlyRate 
-        : Math.ceil(selectedRoom.pricing.basePrice * 0.4);
       
-      const roomCharges = hourlyRate * duration;
+      let roomCharges = 0;
+      let hourlyRate = 0;
+      
+      if (form.useManualPrice && form.manualPrice) {
+        hourlyRate = Number(form.manualPrice);
+        roomCharges = hourlyRate * duration;
+      } else {
+        hourlyRate = selectedRoom.pricing?.hourlyRate > 0 
+          ? selectedRoom.pricing.hourlyRate 
+          : Math.ceil(selectedRoom.pricing.basePrice * 0.4);
+        roomCharges = hourlyRate * duration;
+      }
+      
       const extraCharges = 0;
-
       const subtotal = roomCharges + extraCharges;
       const tax = Math.ceil(subtotal * 0.05);
       const total = subtotal + tax;
 
-      setPricingPreview({ duration, roomCharges, extraCharges, subtotal, tax, total, hourlyRate });
+      setPricingPreview({ 
+        duration, 
+        roomCharges, 
+        extraCharges, 
+        subtotal, 
+        tax, 
+        total, 
+        hourlyRate,
+        isManualPrice: form.useManualPrice
+      });
     }
-  }, [selectedRoom, form.checkInDate, form.checkOutDate, form.adults, form.children, form.hours, bookingType]);
+  }, [selectedRoom, form.checkInDate, form.checkOutDate, form.adults, form.children, form.hours, bookingType, form.useManualPrice, form.manualPrice]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm(prev => ({ ...prev, [name]: value }));
     setErrors(prev => ({ ...prev, [name]: '' }));
+  };
+
+  const handleManualPriceToggle = (e) => {
+    const checked = e.target.checked;
+    setForm(prev => ({ 
+      ...prev, 
+      useManualPrice: checked,
+      manualPrice: checked ? '' : ''
+    }));
   };
 
   const handleImageChange = (e) => {
@@ -168,252 +195,292 @@ export default function CreateBookingPage() {
     reader.readAsDataURL(file);
   };
 
+  // 🔥 FIXED: Complete validation function
   const isFormValid = () => {
-    const baseValid = (
-      form.room &&
-      form.guestName.trim() &&
-      form.guestPhone.match(/^\d{10}$/) &&
-      form.checkInDate &&
-      pricingPreview &&
-      form.source
-    );
+    // Base validation
+    const hasRoom = !!form.room;
+    const hasName = form.guestName.trim().length > 0;
+    const hasPhone = /^\d{10}$/.test(form.guestPhone);
+    const hasCheckIn = !!form.checkInDate;
+    const hasSource = !!form.source;
+    const hasSelectedRoom = !!selectedRoom;
+    const hasPricing = !!pricingPreview;
+
+    const baseValid = hasRoom && hasName && hasPhone && hasCheckIn && hasSource && hasSelectedRoom && hasPricing;
+
+    if (!baseValid) {
+      // Debug output
+      console.log('Base validation failed:', {
+        hasRoom,
+        hasName,
+        hasPhone,
+        hasCheckIn,
+        hasSource,
+        hasSelectedRoom,
+        hasPricing
+      });
+      return false;
+    }
 
     if (bookingType === 'daily') {
-      return baseValid && form.checkOutDate && !errors.checkInDate && !errors.checkOutDate;
-    } else {
-      return baseValid && form.hours >= 1 && form.hours <= 12;
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!isFormValid()) return;
-    setLoading(true);
-
-    try {
-      let checkIn, checkOut;
+      const hasCheckOut = !!form.checkOutDate;
+      const noCheckInError = !errors.checkInDate;
+      const noCheckOutError = !errors.checkOutDate;
       
-      if (bookingType === 'hourly') {
-        checkIn = new Date(`${form.checkInDate}T${form.checkInTime}`);
-        checkOut = new Date(checkIn.getTime() + form.hours * 60 * 60 * 1000);
-      } else {
-        checkIn = new Date(`${form.checkInDate}T${form.checkInTime || '14:00'}`);
-        checkOut = new Date(`${form.checkOutDate}T${form.checkOutTime || '12:00'}`);
+      const isValid = hasCheckOut && noCheckInError && noCheckOutError;
+      
+      if (!isValid) {
+        console.log('Daily validation failed:', {
+          hasCheckOut,
+          noCheckInError,
+          noCheckOutError
+        });
       }
-
-      const payload = {
-        hotel: hotelId,
-        room: form.room,
-        bookingType,
-        hours: bookingType === 'hourly' ? form.hours : undefined,
-        guest: {
-          name: form.guestName.trim(),
-          phone: form.guestPhone,
-          email: form.guestEmail?.trim() || undefined,
-          idProof: form.idProofNumber
-            ? { 
-                type: form.idProofType, 
-                number: form.idProofNumber.trim(),
-                imageBase64: form.idProofImageBase64 || undefined
-              } 
-            : undefined,
-        },
-        numberOfGuests: { adults: Number(form.adults), children: Number(form.children) },
-        dates: {
-          checkIn: checkIn.toISOString(),
-          checkOut: checkOut.toISOString(),
-        },
-        advancePayment: Number(form.advancePayment) || 0,
-        specialRequests: form.specialRequests.trim(),
-        source: form.source,
-      };
-
-      await apiRequest('/bookings', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
-
-      router.push('/hotel-admin/bookings');
-    } catch (err) {
-      alert(err.message || 'Failed to create booking');
-    } finally {
-      setLoading(false);
+      
+      return isValid;
+    } else {
+      // Hourly validation
+      const validHours = form.hours >= 1 && form.hours <= 12;
+      
+      // Manual price validation - only required if checkbox is enabled
+      let manualPriceValid = true;
+      if (form.useManualPrice) {
+        manualPriceValid = form.manualPrice && Number(form.manualPrice) > 0;
+      }
+      
+      const isValid = validHours && manualPriceValid;
+      
+      if (!isValid) {
+        console.log('Hourly validation failed:', {
+          validHours,
+          hours: form.hours,
+          useManualPrice: form.useManualPrice,
+          manualPrice: form.manualPrice,
+          manualPriceValid
+        });
+      }
+      
+      return isValid;
     }
   };
+
+ 
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  
+  // ✅ Check validation first
+  if (!isFormValid()) {
+    alert('Please fill all required fields correctly');
+    return;
+  }
+  
+  setLoading(true);
+
+  try {
+    let checkIn, checkOut;
+    
+    if (bookingType === 'hourly') {
+      checkIn = new Date(`${form.checkInDate}T${form.checkInTime}`);
+      checkOut = new Date(checkIn.getTime() + form.hours * 60 * 60 * 1000);
+    } else {
+      checkIn = new Date(`${form.checkInDate}T${form.checkInTime}`);
+      checkOut = new Date(`${form.checkOutDate}T${form.checkOutTime}`);
+    }
+
+    const bookingData = {
+      hotel: hotelId,
+      room: form.room,
+      bookingType,
+      guest: {
+        name: form.guestName.trim(),
+        email: form.guestEmail.trim() || undefined,
+        phone: form.guestPhone.trim(),
+        idProof: {
+          type: form.idProofType,
+          number: form.idProofNumber,
+          imageBase64: form.idProofImageBase64,
+        },
+      },
+      numberOfGuests: {
+        adults: Number(form.adults),
+        children: Number(form.children),
+      },
+      dates: {
+        checkIn: checkIn.toISOString(),
+        checkOut: checkOut.toISOString(),
+      },
+      specialRequests: form.specialRequests || '',
+      advancePayment: form.advancePayment ? Number(form.advancePayment) : 0,
+      source: form.source,
+    };
+
+    if (bookingType === 'hourly') {
+      bookingData.hours = form.hours;
+      
+      if (form.useManualPrice && form.manualPrice) {
+        bookingData.manualHourlyRate = Number(form.manualPrice);
+      }
+    }
+
+    // 🔥 FIXED: Simple apiRequest call
+    const response = await apiRequest('/bookings', {
+      method: 'POST',
+      body: bookingData,  // ✅ Just the object
+    });
+
+    router.push(`/hotel-admin/bookings/${response.data.booking._id}`);
+  } catch (error) {
+    console.error('Booking error:', error);
+    alert(error.message || 'Failed to create booking');
+  } finally {
+    setLoading(false);
+  }
+};
+
+  // 🔥 Debug output - shows current validation state
+  const validationState = isFormValid();
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="mb-8 flex items-center gap-4">
+          <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
+            <ArrowLeft className="h-6 w-6 text-gray-700" />
+          </button>
           <div>
-            <button
-              onClick={() => router.back()}
-              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4 transition-colors"
-            >
-              <ArrowLeft className="h-5 w-5" />
-              <span className="font-medium">Back</span>
-            </button>
             <h1 className="text-4xl font-bold text-gray-900">Create New Booking</h1>
-            <p className="mt-2 text-gray-600">Reserve a room for your guest</p>
+            <p className="text-gray-600 mt-1">Reserve a room for your guest</p>
           </div>
         </div>
 
+        {/* 🔥 DEBUG PANEL - Remove this after fixing */}
+        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <p className="text-sm font-mono text-gray-800">
+            🐛 Debug: Form Valid = <strong>{validationState ? 'YES ✅' : 'NO ❌'}</strong>
+            {' | '}
+            Room: {form.room ? '✅' : '❌'}
+            {' | '}
+            Name: {form.guestName ? '✅' : '❌'}
+            {' | '}
+            Phone: {/^\d{10}$/.test(form.guestPhone) ? '✅' : '❌'}
+            {' | '}
+            Date: {form.checkInDate ? '✅' : '❌'}
+            {' | '}
+            Pricing: {pricingPreview ? '✅' : '❌'}
+          </p>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Form Section */}
           <div className="lg:col-span-8">
             <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-8">
               <form onSubmit={handleSubmit} className="space-y-8">
-                {/* Booking Type Selector */}
-                <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                    <Clock className="h-5 w-5 text-teal-600" />
-                    Booking Type
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <button
-                      type="button"
-                      onClick={() => setBookingType('daily')}
-                      className={`p-4 rounded-xl border-2 transition-all ${
-                        bookingType === 'daily'
-                          ? 'border-teal-600 bg-teal-50 shadow-md'
-                          : 'border-gray-300 hover:border-gray-400'
-                      }`}
-                    >
-                      <Calendar className={`h-8 w-8 mx-auto mb-2 ${bookingType === 'daily' ? 'text-teal-600' : 'text-gray-400'}`} />
-                      <div className="text-center">
-                        <h4 className="font-semibold text-gray-900">Daily Booking</h4>
-                        <p className="text-sm text-gray-600 mt-1">Book by nights</p>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setBookingType('hourly')}
-                      className={`p-4 rounded-xl border-2 transition-all ${
-                        bookingType === 'hourly'
-                          ? 'border-teal-600 bg-teal-50 shadow-md'
-                          : 'border-gray-300 hover:border-gray-400'
-                      }`}
-                    >
-                      <Clock className={`h-8 w-8 mx-auto mb-2 ${bookingType === 'hourly' ? 'text-teal-600' : 'text-gray-400'}`} />
-                      <div className="text-center">
-                        <h4 className="font-semibold text-gray-900">Hourly Booking</h4>
-                        <p className="text-sm text-gray-600 mt-1">Book by hours (1-12)</p>
-                      </div>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Room Selection - 🔥 UPDATED: All rooms now available for both modes */}
+                {/* Room Selection */}
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                    <Building2 className="h-5 w-5 text-teal-600" /> Select Room
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {rooms.map(room => {
-                      // 🔥 UPDATED: Calculate hourly rate on-the-fly if not set
-                      const hourlyRate = room.pricing?.hourlyRate > 0 
-                        ? room.pricing.hourlyRate 
-                        : Math.ceil(room.pricing.basePrice * 0.4);
-
-                      return (
-                        <button
-                          key={room._id}
-                          type="button"
-                          onClick={() => setForm({ ...form, room: room._id })}
-                          className={`p-5 rounded-xl border-2 text-left transition-all ${
-                            form.room === room._id
-                              ? 'border-teal-600 bg-teal-50 shadow-md'
-                              : 'border-gray-300 hover:border-teal-400'
-                          }`}
-                        >
-                          <div className="flex items-start justify-between mb-2">
-                            <DoorOpen className="h-6 w-6 text-teal-600" />
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${
-                              room.status === 'available' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
-                            }`}>
-                              {room.status}
-                            </span>
-                          </div>
-                          <h4 className="text-xl font-bold text-gray-900">{room.roomNumber}</h4>
-                          <p className="text-sm text-gray-600 mb-3">{room.roomType}</p>
-                          <div className="space-y-1">
-                            <p className="text-lg font-semibold text-teal-700">₹{room.pricing?.basePrice?.toLocaleString()}/night</p>
-                            <p className="text-xs text-gray-600">₹{hourlyRate}/hour</p>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {errors.room && <p className="mt-2 text-red-600 text-sm">{errors.room}</p>}
-                </div>
-
-                {/* Booking Source */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Booking Source</h3>
+                  <label className="block text-base font-medium text-gray-800 mb-2">
+                    Select Room <span className="text-red-500">*</span>
+                  </label>
                   <select
-                    name="source"
-                    value={form.source}
+                    name="room"
+                    value={form.room}
                     onChange={handleChange}
                     className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
                     required
                   >
-                    <option value="Direct">Direct</option>
-                    <option value="OYO">OYO</option>
-                    <option value="MakeMyTrip">MakeMyTrip</option>
-                    <option value="Booking.com">Booking.com</option>
-                    <option value="Goibibo">Goibibo</option>
-                    <option value="Airbnb">Airbnb</option>
-                    <option value="Agoda">Agoda</option>
-                    <option value="Other">Other</option>
+                    <option value="">Choose a room...</option>
+                    {rooms.map(r => (
+                      <option key={r._id} value={r._id}>
+                        {r.roomNumber} - {r.roomType} (₹{r.pricing.basePrice}/night)
+                      </option>
+                    ))}
                   </select>
                 </div>
 
-                {/* Guest Information - Same as before */}
+                {/* Booking Type Selection */}
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                    <User className="h-5 w-5 text-teal-600" /> Guest Information
+                  <label className="block text-base font-medium text-gray-800 mb-3">
+                    Booking Type <span className="text-red-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setBookingType('daily')}
+                      className={`px-6 py-4 rounded-xl font-medium transition-all border-2 ${
+                        bookingType === 'daily'
+                          ? 'bg-teal-50 border-teal-500 text-teal-700'
+                          : 'bg-white border-gray-300 text-gray-700 hover:border-gray-400'
+                      }`}
+                    >
+                      <Calendar className="h-5 w-5 mx-auto mb-2" />
+                      Daily/Nightly Stay
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBookingType('hourly')}
+                      className={`px-6 py-4 rounded-xl font-medium transition-all border-2 ${
+                        bookingType === 'hourly'
+                          ? 'bg-teal-50 border-teal-500 text-teal-700'
+                          : 'bg-white border-gray-300 text-gray-700 hover:border-gray-400'
+                      }`}
+                    >
+                      <Clock className="h-5 w-5 mx-auto mb-2" />
+                      Hourly Stay
+                    </button>
+                  </div>
+                </div>
+
+                {/* Guest Information */}
+                <div className="space-y-6">
+                  <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                    <User className="h-5 w-5" /> Guest Information
                   </h3>
-                  
+
+                  <div>
+                    <label className="block text-base font-medium text-gray-800 mb-2">
+                      Full Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="guestName"
+                      value={form.guestName}
+                      onChange={handleChange}
+                      className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                      required
+                    />
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-base font-medium text-gray-800 mb-2">Full Name <span className="text-red-500">*</span></label>
-                      <input
-                        type="text"
-                        name="guestName"
-                        value={form.guestName}
-                        onChange={handleChange}
-                        className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
-                        placeholder="John Doe"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-base font-medium text-gray-800 mb-2">Phone Number <span className="text-red-500">*</span></label>
-                      <input
-                        type="tel"
-                        name="guestPhone"
-                        value={form.guestPhone}
-                        onChange={handleChange}
-                        className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
-                        placeholder="9876543210"
-                        maxLength={10}
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-base font-medium text-gray-800 mb-2">Email (optional)</label>
+                      <label className="block text-base font-medium text-gray-800 mb-2">Email</label>
                       <input
                         type="email"
                         name="guestEmail"
                         value={form.guestEmail}
                         onChange={handleChange}
                         className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
-                        placeholder="john@example.com"
                       />
                     </div>
 
+                    <div>
+                      <label className="block text-base font-medium text-gray-800 mb-2">
+                        Phone Number <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="tel"
+                        name="guestPhone"
+                        value={form.guestPhone}
+                        onChange={handleChange}
+                        pattern="\d{10}"
+                        placeholder="10 digits"
+                        className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* ID Proof Section */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label className="block text-base font-medium text-gray-800 mb-2">ID Proof Type</label>
                       <select
@@ -423,69 +490,82 @@ export default function CreateBookingPage() {
                         className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
                       >
                         <option value="aadhar">Aadhar Card</option>
+                        <option value="pan">PAN Card</option>
                         <option value="passport">Passport</option>
-                        <option value="driving_license">Driving License</option>
-                        <option value="voter_id">Voter ID</option>
+                        <option value="driving-license">Driving License</option>
+                        <option value="voter-id">Voter ID</option>
                       </select>
                     </div>
 
-                    <div className="md:col-span-2">
-                      <label className="block text-base font-medium text-gray-800 mb-2">ID Proof Number (optional)</label>
+                    <div>
+                      <label className="block text-base font-medium text-gray-800 mb-2">ID Proof Number</label>
                       <input
                         type="text"
                         name="idProofNumber"
                         value={form.idProofNumber}
                         onChange={handleChange}
                         className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
-                        placeholder="Enter ID number"
                       />
                     </div>
+                  </div>
 
-                    <div className="md:col-span-2">
-                      <label className="block text-base font-medium text-gray-800 mb-2">
-                        Upload ID Proof Photo (optional)
+                  <div>
+                    <label className="block text-base font-medium text-gray-800 mb-2">Upload ID Proof (optional)</label>
+                    <div className="mt-2">
+                      <label className="flex items-center gap-3 px-5 py-3.5 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-teal-500 transition-colors">
+                        <Upload className="h-5 w-5 text-gray-400" />
+                        <span className="text-gray-600">{form.idProofImage ? form.idProofImage.name : 'Choose file (JPG/PNG, max 5MB)'}</span>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/jpg"
+                          onChange={handleImageChange}
+                          className="hidden"
+                        />
                       </label>
-                      <div className="flex items-center gap-4">
-                        <label className="cursor-pointer flex-1">
-                          <div className="flex items-center justify-center gap-3 border-2 border-dashed border-gray-300 rounded-xl p-6 hover:border-teal-500 transition-colors bg-gray-50">
-                            <Upload className="h-6 w-6 text-gray-500" />
-                            <span className="text-gray-600">
-                              {form.idProofImage ? form.idProofImage.name : 'Click to upload JPG/PNG (max 5MB)'}
-                            </span>
-                          </div>
-                          <input
-                            type="file"
-                            accept="image/jpeg,image/png"
-                            onChange={handleImageChange}
-                            className="hidden"
-                          />
-                        </label>
-
-                        {idProofPreview && (
-                          <div className="w-32 h-32 rounded-lg overflow-hidden border border-gray-300 shadow-sm">
-                            <img 
-                              src={idProofPreview} 
-                              alt="ID Proof Preview" 
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                        )}
-                      </div>
                     </div>
+                    {idProofPreview && (
+                      <div className="mt-4">
+                        <img src={idProofPreview} alt="ID Proof Preview" className="w-48 h-auto rounded-xl border" />
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-base font-medium text-gray-800 mb-2">
+                      Booking Source <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      name="source"
+                      value={form.source}
+                      onChange={handleChange}
+                      className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                      required
+                    >
+                      <option value="Direct">Direct</option>
+                      <option value="Phone">Phone</option>
+                      <option value="Email">Email</option>
+                      <option value="Walk-in">Walk-in</option>
+                      <option value="Booking.com">Booking.com</option>
+                      <option value="MakeMyTrip">MakeMyTrip</option>
+                      <option value="OYO">OYO</option>
+                      <option value="Goibibo">Goibibo</option>
+                      <option value="Agoda">Agoda</option>
+                    </select>
                   </div>
                 </div>
 
-                {/* Dates & Duration Section */}
+                {/* Check-in/out Dates */}
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                    <Calendar className="h-5 w-5 text-teal-600" />
-                    {bookingType === 'hourly' ? 'Booking Time & Duration' : 'Dates'}
+                  <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <Calendar className="h-5 w-5" /> Stay Details
                   </h3>
 
                   {bookingType === 'daily' ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div>
-                        <label className="block text-base font-medium text-gray-800 mb-2">Check-in Date <span className="text-red-500">*</span></label>
+                        <label className="block text-base font-medium text-gray-800 mb-2">
+                          Check-in Date <span className="text-red-500">*</span>
+                        </label>
                         <input
                           type="date"
                           name="checkInDate"
@@ -495,24 +575,55 @@ export default function CreateBookingPage() {
                           className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
                           required
                         />
-                        {errors.checkInDate && <p className="mt-1 text-red-600 text-sm">{errors.checkInDate}</p>}
+                        {errors.checkInDate && <p className="text-red-500 text-sm mt-1">{errors.checkInDate}</p>}
                       </div>
 
                       <div>
-                        <label className="block text-base font-medium text-gray-800 mb-2">Check-out Date <span className="text-red-500">*</span></label>
+                        <label className="block text-base font-medium text-gray-800 mb-2">
+                          Check-in Time <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="time"
+                          name="checkInTime"
+                          value={form.checkInTime}
+                          onChange={handleChange}
+                          className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-base font-medium text-gray-800 mb-2">
+                          Check-out Date <span className="text-red-500">*</span>
+                        </label>
                         <input
                           type="date"
                           name="checkOutDate"
                           value={form.checkOutDate}
                           onChange={handleChange}
+                          min={form.checkInDate || new Date().toISOString().split('T')[0]}
                           className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
                           required
                         />
-                        {errors.checkOutDate && <p className="mt-1 text-red-600 text-sm">{errors.checkOutDate}</p>}
+                        {errors.checkOutDate && <p className="text-red-500 text-sm mt-1">{errors.checkOutDate}</p>}
+                      </div>
+
+                      <div>
+                        <label className="block text-base font-medium text-gray-800 mb-2">
+                          Check-out Time <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="time"
+                          name="checkOutTime"
+                          value={form.checkOutTime}
+                          onChange={handleChange}
+                          className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                          required
+                        />
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-6">
+                    <div>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div>
                           <label className="block text-base font-medium text-gray-800 mb-2">Start Date <span className="text-red-500">*</span></label>
@@ -555,8 +666,54 @@ export default function CreateBookingPage() {
                         </div>
                       </div>
 
+                      {/* Manual Price Option for Hourly Bookings */}
+                      <div className="mt-6 bg-orange-50 border border-orange-200 rounded-xl p-6">
+                        <div className="flex items-start gap-3 mb-4">
+                          <input
+                            type="checkbox"
+                            id="useManualPrice"
+                            checked={form.useManualPrice}
+                            onChange={handleManualPriceToggle}
+                            className="mt-1 w-5 h-5 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
+                          />
+                          <div className="flex-1">
+                            <label htmlFor="useManualPrice" className="text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
+                              <DollarSign className="h-5 w-5 text-orange-600" />
+                              Set Custom Price Per Hour
+                            </label>
+                            <p className="text-sm text-gray-600 mt-1">
+                              Override automatic price calculation and set your own hourly rate
+                            </p>
+                          </div>
+                        </div>
+
+                        {form.useManualPrice && (
+                          <div className="mt-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Custom Price Per Hour (₹) <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="number"
+                              name="manualPrice"
+                              value={form.manualPrice}
+                              onChange={handleChange}
+                              min="1"
+                              step="1"
+                              placeholder="Enter price per hour"
+                              className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-orange-500 focus:ring-orange-200 font-semibold text-lg"
+                              required
+                            />
+                            {form.manualPrice && (
+                              <p className="text-sm text-green-700 mt-2 font-medium">
+                                Total: ₹{Number(form.manualPrice) * form.hours} for {form.hours} hour{form.hours > 1 ? 's' : ''}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
                       {form.checkOutDate && form.checkOutTime && (
-                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                        <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4">
                           <p className="text-sm text-blue-900">
                             <strong>End Time:</strong> {new Date(`${form.checkOutDate}T${form.checkOutTime}`).toLocaleString('en-IN', { 
                               dateStyle: 'medium', 
@@ -590,7 +747,7 @@ export default function CreateBookingPage() {
                       type="number"
                       min="0"
                       name="children"
-                      value="form.children"
+                      value={form.children}
                       onChange={handleChange}
                       className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
                     />
@@ -628,9 +785,9 @@ export default function CreateBookingPage() {
 
                 <button
                   type="submit"
-                  disabled={loading || !isFormValid()}
+                  disabled={loading || !validationState}
                   className={`mt-8 w-full py-4 px-6 rounded-xl text-white font-semibold text-lg transition-all shadow-lg
-                    ${isFormValid() 
+                    ${validationState 
                       ? 'bg-teal-600 hover:bg-teal-700' 
                       : 'bg-gray-400 cursor-not-allowed'}`}
                 >
@@ -656,20 +813,35 @@ export default function CreateBookingPage() {
 
               {selectedRoom && pricingPreview ? (
                 <div className="space-y-5">
-                  <div className="p-5 bg-teal-50 rounded-xl border border-teal-100">
-                    <div className="text-sm text-teal-800 mb-1">
+                  <div className={`p-5 rounded-xl border ${
+                    pricingPreview.isManualPrice 
+                      ? 'bg-orange-50 border-orange-200' 
+                      : 'bg-teal-50 border-teal-100'
+                  }`}>
+                    <div className={`text-sm mb-1 ${
+                      pricingPreview.isManualPrice ? 'text-orange-800' : 'text-teal-800'
+                    }`}>
                       Room Charges ({pricingPreview.duration} {bookingType === 'hourly' 
                         ? (pricingPreview.duration === 1 ? 'hour' : 'hours')
                         : (pricingPreview.duration === 1 ? 'night' : 'nights')
                       })
                       {bookingType === 'hourly' && pricingPreview.hourlyRate && (
-                        <span className="block text-xs mt-1">@ ₹{pricingPreview.hourlyRate}/hour</span>
+                        <span className="block text-xs mt-1">
+                          @ ₹{pricingPreview.hourlyRate}/hour
+                          {pricingPreview.isManualPrice && (
+                            <span className="ml-2 px-2 py-0.5 bg-orange-200 text-orange-900 rounded-full text-xs font-semibold">
+                              CUSTOM
+                            </span>
+                          )}
+                        </span>
                       )}
                     </div>
                     <div className="text-3xl font-bold text-gray-900">₹{pricingPreview.roomCharges.toLocaleString()}</div>
 
                     {pricingPreview.extraCharges > 0 && (
-                      <div className="mt-3 text-sm text-teal-700">
+                      <div className={`mt-3 text-sm ${
+                        pricingPreview.isManualPrice ? 'text-orange-700' : 'text-teal-700'
+                      }`}>
                         + ₹{pricingPreview.extraCharges.toLocaleString()} (extra guests)
                       </div>
                     )}

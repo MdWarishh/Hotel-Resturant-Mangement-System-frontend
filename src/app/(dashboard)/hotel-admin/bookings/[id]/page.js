@@ -76,31 +76,9 @@ export default function BookingDetailsPage() {
     }
   };
 
- const handleDownloadPDF = async () => {
-  try {
-    const token = localStorage.getItem('token');
-    // Using fetch directly to handle the blob stream
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/hotel-admin/bookings/${id}/invoice/pdf?token=${token}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
 
-    if (!response.ok) throw new Error('Failed to generate invoice');
-
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Invoice-${booking.bookingNumber}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
-  } catch (err) {
-    alert('Error downloading invoice: ' + err.message);
-  }
+const handleDownloadPDF = () => {
+  router.push(`/hotel-admin/bookings/${id}/invoice`);
 };
 
   if (loading) {
