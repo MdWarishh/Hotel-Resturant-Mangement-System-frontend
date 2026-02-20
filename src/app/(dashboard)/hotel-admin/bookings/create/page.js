@@ -542,8 +542,7 @@ const handleSubmit = async (e) => {
                       required
                     >
                       <option value="Direct">Direct</option>
-                      <option value="Phone">Phone</option>
-                      <option value="Email">Email</option>
+                      <option value="Airbnb">Airbnb</option>
                       <option value="Walk-in">Walk-in</option>
                       <option value="Booking.com">Booking.com</option>
                       <option value="MakeMyTrip">MakeMyTrip</option>
