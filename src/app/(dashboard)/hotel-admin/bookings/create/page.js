@@ -355,7 +355,7 @@ const handleSubmit = async (e) => {
         </div>
 
         {/* 🔥 DEBUG PANEL - Remove this after fixing */}
-        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+        {/* <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
           <p className="text-sm font-mono text-gray-800">
             🐛 Debug: Form Valid = <strong>{validationState ? 'YES ✅' : 'NO ❌'}</strong>
             {' | '}
@@ -369,7 +369,7 @@ const handleSubmit = async (e) => {
             {' | '}
             Pricing: {pricingPreview ? '✅' : '❌'}
           </p>
-        </div>
+        </div> */}
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Form Section */}
