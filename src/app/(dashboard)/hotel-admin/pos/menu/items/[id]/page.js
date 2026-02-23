@@ -28,6 +28,10 @@ export default function MenuItemDetailPage() {
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [saveError, setSaveError] = useState(null)
 
+  // Subcategory states for edit mode
+  const [subCategories, setSubCategories] = useState([])
+  const [loadingSubCategories, setLoadingSubCategories] = useState(false)
+
   // ── Load item ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!id) return
@@ -45,6 +49,9 @@ export default function MenuItemDetailPage() {
       if (!data) throw new Error('Menu item not found')
 
       setItem(data)
+
+      const categoryId = data.category?._id || data.category || ''
+
       setForm({
         name: data.name || '',
         description: data.description || '',
@@ -57,12 +64,38 @@ export default function MenuItemDetailPage() {
         images: data.images || [''],
         variants: data.variants?.length ? data.variants : [{ name: '', price: '' }],
         isAvailable: data.isAvailable ?? true,
+        // Store category & subCategory for the edit dropdown
+        category: categoryId,
+        subCategory: data.subCategory?._id || data.subCategory || '',
       })
+
+      // If item has a category, pre-load its subcategories
+      if (categoryId) {
+        loadSubCategoriesForCategory(categoryId)
+      }
     } catch (err) {
       console.error(err)
       setError(err.message || 'Failed to load menu item')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Load subcategories for a given category ID
+  const loadSubCategoriesForCategory = async (categoryId) => {
+    if (!categoryId) {
+      setSubCategories([])
+      return
+    }
+    setLoadingSubCategories(true)
+    try {
+      const res = await apiRequest(`/pos/subcategories?category=${categoryId}`)
+      setSubCategories(res.data?.subCategories || [])
+    } catch (err) {
+      console.error('Failed to load subcategories', err)
+      setSubCategories([])
+    } finally {
+      setLoadingSubCategories(false)
     }
   }
 
@@ -180,6 +213,8 @@ export default function MenuItemDetailPage() {
         images: cleanImages.length ? cleanImages : undefined,
         variants: cleanVariants.length ? cleanVariants : undefined,
         isAvailable: form.isAvailable,
+        // subCategory is optional — only send if selected
+        subCategory: form.subCategory || undefined,
       }
 
       const res = await apiRequest(`/pos/items/${id}`, {
@@ -383,6 +418,38 @@ export default function MenuItemDetailPage() {
                     }`}
                   />
                   {formErrors.price && <p className="mt-1.5 text-sm text-red-600">{formErrors.price}</p>}
+                </div>
+
+                {/* Sub Category (edit mode) */}
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                    Sub-Category
+                    <span className="ml-1.5 text-xs text-gray-400 font-normal">(optional)</span>
+                  </label>
+                  {loadingSubCategories ? (
+                    <div className="flex items-center gap-2 text-gray-500">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading sub-categories...
+                    </div>
+                  ) : subCategories.length === 0 ? (
+                    <div className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-700/50 text-gray-400 dark:text-gray-500 text-sm">
+                      No sub-categories available for this item's category
+                    </div>
+                  ) : (
+                    <select
+                      name="subCategory"
+                      value={form.subCategory}
+                      onChange={handleChange}
+                      className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-[rgb(0,173,181)]"
+                    >
+                      <option value="">None (no sub-category)</option>
+                      {subCategories.map(sub => (
+                        <option key={sub._id} value={sub._id}>
+                          {sub.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 {/* Type */}
@@ -673,6 +740,16 @@ export default function MenuItemDetailPage() {
                   <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Spice Level</h3>
                   <p className="text-lg font-semibold capitalize">{item.spicyLevel}</p>
                 </div>
+
+                {/* Sub-Category — show only if item has one */}
+                {(item.subCategory?.name || item.subCategory) && (
+                  <div className="bg-gray-50 dark:bg-gray-800/50 p-5 rounded-xl">
+                    <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Sub-Category</h3>
+                    <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                      {item.subCategory?.name || item.subCategory}
+                    </p>
+                  </div>
+                )}
 
                 {/* Description */}
                 {item.description && (

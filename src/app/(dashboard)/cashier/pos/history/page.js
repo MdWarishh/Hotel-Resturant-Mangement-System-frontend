@@ -25,12 +25,15 @@ export default function OrderHistoryPage() {
 
     const socket = connectPOSSocket()
 
+    // Backend already handles ready->served automatically
+    // Bas history refresh karo jab koi order complete ho
     socket.on('order:updated', (updatedOrder) => {
-      if (['paid', 'settled', 'cancelled'].includes(updatedOrder.status)) {
-        // Refresh if a new completed order appears
+      if (['served', 'paid', 'settled', 'cancelled', 'ready'].includes(updatedOrder.status)) {
         fetchHistory()
       }
     })
+
+    socket.on('order:created', () => fetchHistory())
 
     return () => disconnectPOSSocket()
   }, [startDate, endDate])
@@ -42,11 +45,14 @@ const fetchHistory = async () => {
   setError(null)
 
   try {
+    // endDate ko end of day tak extend karo (23:59:59)
+    // Warna aaj ke orders miss ho jaate hain
+    const endDateFull = endDate + 'T23:59:59.999Z'
+
     const params = new URLSearchParams({
       startDate,
-      endDate,
-      // ✅ FIX: Added 'served' to the status filter to match backend
-      status: 'served,paid,settled,cancelled', 
+      endDate: endDateFull,
+      status: 'served,paid,settled,cancelled',
     })
 
     const res = await apiRequest(`/pos/orders?${params.toString()}`)
@@ -93,8 +99,9 @@ const fetchHistory = async () => {
 // Add 'served' to your badge styles
 const getStatusBadge = (status) => {
   const styles = {
+    ready: 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
     paid: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-    served: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300', // ✅ NEW
+    served: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
     settled: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
     cancelled: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
   }

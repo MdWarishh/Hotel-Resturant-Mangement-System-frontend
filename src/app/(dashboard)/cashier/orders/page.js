@@ -1,32 +1,36 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiRequest } from '@/services/api'
 import { connectPOSSocket, disconnectPOSSocket } from '@/services/posSocket'
-import { Loader2, AlertCircle, RefreshCw, Clock, DollarSign, Users, BedDouble, Plus } from 'lucide-react'
+import { Loader2, AlertCircle, RefreshCw, Clock, DollarSign, Plus } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 
 export default function RunningOrdersPage() {
   const router = useRouter()
-
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const fetchRef = useRef(null)
 
-  // Fetch initial orders
   useEffect(() => {
     fetchRunningOrders()
 
     const socket = connectPOSSocket()
 
-    // Live updates
-    socket.on('order:created', handleOrderUpdate)
-    socket.on('order:updated', handleOrderUpdate)
-    socket.on('order:deleted', handleOrderUpdate)
-    socket.on('order:statusUpdated', handleOrderUpdate)
+    // Socket pe live update - sirf running orders refresh karo
+    // served/paid/cancelled aane pe wo list se hatenge
+    socket.on('order:created', fetchRunningOrders)
+    socket.on('order:updated', fetchRunningOrders)
+    socket.on('order:deleted', fetchRunningOrders)
+    socket.on('order:paid', fetchRunningOrders)
 
     return () => {
+      socket.off('order:created', fetchRunningOrders)
+      socket.off('order:updated', fetchRunningOrders)
+      socket.off('order:deleted', fetchRunningOrders)
+      socket.off('order:paid', fetchRunningOrders)
       disconnectPOSSocket()
     }
   }, [])
@@ -37,10 +41,16 @@ export default function RunningOrdersPage() {
 
     try {
       const res = await apiRequest('/pos/orders/running')
-      // Assuming your endpoint returns { orders: [...] }
-      const activeOrders = (res.data?.orders || []).filter(
-        o => !['paid', 'settled', 'cancelled'].includes(o.status)
+      const allOrders = res.data?.orders || []
+
+      // Frontend filter: sirf active orders dikhao
+      // served, paid, settled, cancelled — ye sab history mein jayenge
+      const activeOrders = allOrders.filter(
+        o => !['paid', 'settled', 'served', 'cancelled'].includes(o.status)
       )
+
+      // Newest first
+      activeOrders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       setOrders(activeOrders)
     } catch (err) {
       console.error('Failed to fetch running orders:', err)
@@ -50,21 +60,14 @@ export default function RunningOrdersPage() {
     }
   }
 
-  const handleOrderUpdate = () => {
-    // Refresh list on any relevant socket event
-    fetchRunningOrders()
-  }
-
   const getStatusBadge = (status) => {
     const styles = {
       pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
       preparing: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
       ready: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-      served: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
     }
-
     return (
-      <span className={`inline-flex px-2 sm:px-3 py-1 rounded-full text-xs font-semibold capitalize ${styles[status] || 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'}`}>
+      <span className={`inline-flex px-2 sm:px-3 py-1 rounded-full text-xs font-semibold capitalize ${styles[status] || 'bg-gray-100 text-gray-800'}`}>
         {status}
       </span>
     )
@@ -109,7 +112,6 @@ export default function RunningOrdersPage() {
               Active dine-in, takeaway & room-service orders
             </p>
           </div>
-
           <button
             onClick={fetchRunningOrders}
             className="flex items-center gap-2 px-4 sm:px-5 py-2.5 sm:py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all"
@@ -164,12 +166,7 @@ export default function RunningOrdersPage() {
                   </div>
                   <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1">
                     <Clock className="h-3 w-3 sm:h-4 sm:w-4" />
-                    <span className="hidden sm:inline">
-                      {formatDistanceToNow(new Date(order.createdAt), { addSuffix: true })}
-                    </span>
-                    <span className="sm:hidden">
-                      {formatDistanceToNow(new Date(order.createdAt), { addSuffix: true }).replace('about ', '')}
-                    </span>
+                    {formatDistanceToNow(new Date(order.createdAt), { addSuffix: true })}
                   </div>
                 </div>
 
@@ -197,22 +194,5 @@ export default function RunningOrdersPage() {
         </button>
       </div>
     </div>
-  )
-}
-
-// Status Badge Helper
-function getStatusBadge(status) {
-  const styles = {
-    pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
-    preparing: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
-    ready: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-    served: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
-    paid: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
-  }
-
-  return (
-    <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium capitalize ${styles[status] || 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'}`}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
-    </span>
   )
 }

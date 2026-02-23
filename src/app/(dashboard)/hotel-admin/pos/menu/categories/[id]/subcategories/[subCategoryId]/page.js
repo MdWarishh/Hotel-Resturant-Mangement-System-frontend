@@ -4,18 +4,18 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
 import { apiRequest } from '@/services/api'
-import { Loader2, Save, AlertCircle, ArrowLeft, Edit, Trash2, Layers, Plus } from 'lucide-react'
+import { Loader2, AlertCircle, ArrowLeft, Edit, Trash2, Plus } from 'lucide-react'
 import Link from 'next/link'
 import Image from 'next/image'
 
-export default function CategoryDetailPage() {
-  const { id } = useParams()
+export default function SubCategoryDetailPage() {
+  const { id: categoryId, subCategoryId } = useParams()
   const { user } = useAuth()
   const router = useRouter()
 
   const [category, setCategory] = useState(null)
+  const [subCategory, setSubCategory] = useState(null)
   const [items, setItems] = useState([])
-  const [subCategories, setSubCategories] = useState([])  // NEW!
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -31,19 +31,18 @@ export default function CategoryDetailPage() {
     return <div className="p-8 text-red-600">Unauthorized</div>
   }
 
-  // ── Fetch category + items + sub-categories ─────────────────────────────────
   useEffect(() => {
-    if (!id) return
-    loadCategory()
-  }, [id])
+    if (!categoryId || !subCategoryId) return
+    loadData()
+  }, [categoryId, subCategoryId])
 
-  const loadCategory = async () => {
+  const loadData = async () => {
     setLoading(true)
     setError(null)
 
     try {
-      // Get category details
-      const catRes = await apiRequest(`/pos/categories/${id}`)
+      // Get parent category
+      const catRes = await apiRequest(`/pos/categories/${categoryId}`)
       const catData = catRes.data?.category || null
 
       if (!catData) {
@@ -51,28 +50,29 @@ export default function CategoryDetailPage() {
       }
 
       setCategory(catData)
+
+      // Get sub-category details
+      const subCatRes = await apiRequest(`/pos/subcategories/${subCategoryId}`)
+      const subCatData = subCatRes.data?.subCategory || null
+
+      if (!subCatData) {
+        throw new Error('Sub-category not found')
+      }
+
+      setSubCategory(subCatData)
       setForm({
-        name: catData.name || '',
-        description: catData.description || '',
-        displayOrder: catData.displayOrder?.toString() || '0',
-        image: catData.image || '',
+        name: subCatData.name || '',
+        description: subCatData.description || '',
+        displayOrder: subCatData.displayOrder?.toString() || '0',
+        image: subCatData.image || '',
       })
 
-      // Get items in this category
-      const itemsRes = await apiRequest(`/pos/items?category=${id}`)
+      // Get items in this sub-category
+      const itemsRes = await apiRequest(`/pos/items?subCategory=${subCategoryId}`)
       setItems(itemsRes.data?.items || itemsRes.data || [])
-
-      // Get sub-categories for this category (NEW!)
-      try {
-        const subCatRes = await apiRequest(`/pos/categories/${id}/subcategories`)
-        setSubCategories(subCatRes.data?.subCategories || [])
-      } catch (err) {
-        console.warn('Failed to load sub-categories:', err)
-        setSubCategories([])
-      }
     } catch (err) {
       console.error(err)
-      setError(err.message || 'Failed to load category details')
+      setError(err.message || 'Failed to load sub-category details')
     } finally {
       setLoading(false)
     }
@@ -91,7 +91,7 @@ export default function CategoryDetailPage() {
     const errs = {}
 
     if (!form.name.trim()) {
-      errs.name = 'Category name is required'
+      errs.name = 'Sub-category name is required'
     } else if (form.name.trim().length < 2 || form.name.trim().length > 50) {
       errs.name = 'Name must be 2–50 characters'
     }
@@ -126,57 +126,33 @@ export default function CategoryDetailPage() {
         image: form.image.trim() || undefined,
       }
 
-      const res = await apiRequest(`/pos/categories/${id}`, {
+      const res = await apiRequest(`/pos/subcategories/${subCategoryId}`, {
         method: 'PUT',
         body: JSON.stringify(payload),
       })
 
-      if (res.data?.category) {
+      if (res.data?.subCategory) {
         setSaveSuccess(true)
         setIsEditing(false)
-
-        await loadCategory()
-
+        await loadData()
         setTimeout(() => setSaveSuccess(false), 3000)
       }
     } catch (err) {
-      let msg = err.response?.data?.message || 'Failed to update category'
-
-      if (msg.includes('already exists') || msg.includes('duplicate')) {
-        setFormErrors(prev => ({
-          ...prev,
-          name: 'Another category with this name already exists',
-        }))
-      } else {
-        setSaveError(msg)
-      }
+      let msg = err.response?.data?.message || 'Failed to update sub-category'
+      setSaveError(msg)
     } finally {
       setSaveLoading(false)
     }
   }
 
   const handleDelete = async () => {
-    if (!confirm('Delete this category? Items will remain but become uncategorized.')) {
+    if (!confirm('Delete this sub-category? Items will remain in the category.')) {
       return
     }
 
     try {
-      await apiRequest(`/pos/categories/${id}`, { method: 'DELETE' })
-      router.push('/hotel-admin/pos/menu')
-    } catch (err) {
-      alert('Failed to delete: ' + (err.response?.data?.message || err.message))
-    }
-  }
-
-  // Delete sub-category (NEW!)
-  const handleDeleteSubCategory = async (subCatId, subCatName) => {
-    if (!confirm(`Delete sub-category "${subCatName}"? Items will remain in the category.`)) {
-      return
-    }
-
-    try {
-      await apiRequest(`/pos/subcategories/${subCatId}`, { method: 'DELETE' })
-      await loadCategory() // Refresh data
+      await apiRequest(`/pos/subcategories/${subCategoryId}`, { method: 'DELETE' })
+      router.push(`/hotel-admin/pos/categories/${categoryId}`)
     } catch (err) {
       alert('Failed to delete: ' + (err.response?.data?.message || err.message))
     }
@@ -190,19 +166,19 @@ export default function CategoryDetailPage() {
     )
   }
 
-  if (error || !category) {
+  if (error || !subCategory) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 flex items-center justify-center">
         <div className="max-w-md text-center">
           <AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
           <h2 className="text-2xl font-bold mb-2">Error</h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">{error || 'Category not found'}</p>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">{error || 'Sub-category not found'}</p>
           <Link
-            href="/hotel-admin/pos/menu"
+            href={`/hotel-admin/pos/categories/${categoryId}`}
             className="inline-flex items-center gap-2 px-6 py-3 bg-[rgb(0,173,181)] text-white rounded-lg hover:bg-[rgb(0,173,181)]/90"
           >
             <ArrowLeft className="h-5 w-5" />
-            Back to Menu
+            Back to Category
           </Link>
         </div>
       </div>
@@ -213,55 +189,56 @@ export default function CategoryDetailPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-6">
       <div className="max-w-5xl mx-auto">
         {/* Header */}
-        <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <Link
-              href="/hotel-admin/pos/menu"
-              className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
-            >
-              <ArrowLeft className="h-6 w-6" />
-            </Link>
+        <div className="mb-8">
+          <Link
+            href={`/hotel-admin/pos/menu/categories/${categoryId}`}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors mb-4"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="text-sm font-medium">{category?.name}</span>
+          </Link>
 
+          <div className="flex items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                {category.name}
+                {subCategory.name}
               </h1>
               <p className="text-gray-600 dark:text-gray-400 mt-1">
-                Category Details
+                Sub-category Details
               </p>
             </div>
+
+            {!isEditing && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="p-2.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  title="Edit sub-category"
+                >
+                  <Edit className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+                </button>
+
+                <button
+                  onClick={handleDelete}
+                  className="p-2.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  title="Delete sub-category"
+                >
+                  <Trash2 className="h-5 w-5 text-red-600 dark:text-red-400" />
+                </button>
+              </div>
+            )}
           </div>
-
-          {!isEditing && (
-            <div className="flex gap-2">
-              <button
-                onClick={() => setIsEditing(true)}
-                className="p-2.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                title="Edit category"
-              >
-                <Edit className="h-5 w-5 text-gray-700 dark:text-gray-300" />
-              </button>
-
-              <button
-                onClick={handleDelete}
-                className="p-2.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                title="Delete category"
-              >
-                <Trash2 className="h-5 w-5 text-red-600 dark:text-red-400" />
-              </button>
-            </div>
-          )}
         </div>
 
-        {/* Main Content Card */}
+        {/* Main Content */}
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-200 dark:border-gray-700">
           {isEditing ? (
-            // ── EDIT MODE ─────────────────────────────────────────────────────
+            // ── EDIT MODE ──────────────────────────────────────────────────────
             <form className="p-6 md:p-8">
               {saveSuccess && (
                 <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg text-green-700 dark:text-green-300 flex items-center gap-2">
-                  <Save className="h-5 w-5" />
-                  Category updated successfully!
+                  <Loader2 className="h-5 w-5" />
+                  Sub-category updated successfully!
                 </div>
               )}
 
@@ -277,7 +254,7 @@ export default function CategoryDetailPage() {
                   {/* Name */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                      Category Name <span className="text-red-500">*</span>
+                      Sub-Category Name <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -316,7 +293,7 @@ export default function CategoryDetailPage() {
                   {/* Image URL */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                      Category Image URL
+                      Sub-Category Image URL
                     </label>
                     <input
                       type="url"
@@ -326,22 +303,6 @@ export default function CategoryDetailPage() {
                       placeholder="https://..."
                       className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-[rgb(0,173,181)]"
                     />
-                    {form.image && (
-                      <div className="mt-3">
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Preview:</p>
-                        <div className="relative w-48 h-32 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-                          <Image
-                            src={form.image}
-                            alt="Category preview"
-                            fill
-                            className="object-cover"
-                            onError={(e) => {
-                              e.target.src = '/placeholder-image.jpg'
-                            }}
-                          />
-                        </div>
-                      </div>
-                    )}
                   </div>
 
                   {/* Description */}
@@ -389,7 +350,6 @@ export default function CategoryDetailPage() {
                       </>
                     ) : (
                       <>
-                        <Save className="h-5 w-5" />
                         Save Changes
                       </>
                     )}
@@ -398,167 +358,56 @@ export default function CategoryDetailPage() {
               </div>
             </form>
           ) : (
-            // ── VIEW MODE ─────────────────────────────────────────────────────
+            // ── VIEW MODE ───────────────────────────────────────────────────────
             <div className="p-6 md:p-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-
-                {/* Image (if exists) */}
-                {category.image && (
-                  <div className="md:col-span-3 lg:col-span-1">
-                    <div className="relative aspect-video rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm">
-                      <Image
-                        src={category.image}
-                        alt={category.name}
-                        fill
-                        className="object-cover"
-                        onError={(e) => (e.target.src = '/placeholder-category.jpg')}
-                      />
-                    </div>
-                  </div>
-                )}
-
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
                 {/* Basic info */}
                 <div className="bg-gray-50 dark:bg-gray-800/50 p-5 rounded-xl">
                   <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Name</h3>
-                  <p className="text-xl font-bold text-gray-900 dark:text-white">{category.name}</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{subCategory.name}</p>
                 </div>
 
                 <div className="bg-gray-50 dark:bg-gray-800/50 p-5 rounded-xl">
                   <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Display Order</h3>
-                  <p className="text-xl font-bold text-gray-900 dark:text-white">{category.displayOrder || 0}</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{subCategory.displayOrder || 0}</p>
                 </div>
 
                 <div className="bg-gray-50 dark:bg-gray-800/50 p-5 rounded-xl">
-                  <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Items in Category</h3>
+                  <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Items in Sub-Category</h3>
                   <p className="text-xl font-bold text-gray-900 dark:text-white">
                     {items.length} <span className="text-sm font-normal opacity-70">total</span>
                   </p>
                 </div>
 
                 {/* Description - full width if long */}
-                {category.description && (
+                {subCategory.description && (
                   <div className="md:col-span-2 lg:col-span-3 bg-gray-50 dark:bg-gray-800/50 p-5 rounded-xl">
                     <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Description</h3>
                     <p className="text-gray-900 dark:text-gray-300 whitespace-pre-line">
-                      {category.description}
+                      {subCategory.description}
                     </p>
-                  </div>
-                )}
-              </div>
-
-              {/* ──────────────────────────────────────────────────────────────── */}
-              {/* SUB-CATEGORIES SECTION (NEW!) */}
-              {/* ──────────────────────────────────────────────────────────────── */}
-              <div className="mt-10 pt-6 border-t border-gray-200 dark:border-gray-700">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-2">
-                    <Layers className="h-5 w-5 text-[rgb(0,173,181)]" />
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      Sub-Categories
-                    </h3>
-                    {subCategories.length > 0 && (
-                      <span className="ml-2 px-2.5 py-0.5 bg-[rgb(0,173,181)]/10 text-[rgb(0,173,181)] text-xs font-medium rounded-full">
-                        {subCategories.length}
-                      </span>
-                    )}
-                  </div>
-                  <Link
-                    href={`/hotel-admin/pos/menu/categories/${id}/subcategories/create`}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-[rgb(0,173,181)] text-white rounded-lg hover:bg-[rgb(0,173,181)]/90 text-sm font-medium transition-colors"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Add Sub-Category
-                  </Link>
-                </div>
-
-                {subCategories.length === 0 ? (
-                  <div className="bg-gray-50 dark:bg-gray-800/50 p-8 rounded-xl text-center">
-                    <Layers className="h-12 w-12 mx-auto text-gray-400 dark:text-gray-600 mb-3" />
-                    <p className="text-gray-500 dark:text-gray-400 mb-4">
-                      No sub-categories yet
-                    </p>
-                    <Link
-                      href={`/hotel-admin/pos/menu/categories/${id}/subcategories/create`}
-                      className="inline-flex items-center gap-2 px-4 py-2 text-[rgb(0,173,181)] hover:bg-[rgb(0,173,181)]/10 rounded-lg font-medium transition-colors"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Create First Sub-Category
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {subCategories.map(subCat => (
-                      <div
-                        key={subCat._id}
-                        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md hover:border-[rgb(0,173,181)]/40 transition-all"
-                      >
-                        {/* Sub-category header */}
-                        <div className="flex items-start justify-between mb-3">
-                          <div>
-                            <h4 className="font-semibold text-gray-900 dark:text-white">
-                              {subCat.name}
-                            </h4>
-                            {subCat.displayOrder !== undefined && (
-                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                Order: {subCat.displayOrder}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex gap-1">
-                            <Link
-                              href={`/hotel-admin/pos/menu/categories/${id}/subcategories/${subCat._id}/edit`}
-                              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                              title="Edit sub-category"
-                            >
-                              <Edit className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                            </Link>
-                            <button
-                              onClick={() => handleDeleteSubCategory(subCat._id, subCat.name)}
-                              className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                              title="Delete sub-category"
-                            >
-                              <Trash2 className="h-4 w-4 text-red-600 dark:text-red-400" />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Description */}
-                        {subCat.description && (
-                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
-                            {subCat.description}
-                          </p>
-                        )}
-
-                        {/* View items button */}
-                        <Link
-                          href={`/hotel-admin/pos/menu/categories/${id}/subcategories/${subCat._id}`}
-                          className="inline-flex text-xs text-[rgb(0,173,181)] hover:underline font-medium"
-                        >
-                          View Items →
-                        </Link>
-                      </div>
-                    ))}
                   </div>
                 )}
               </div>
 
               {/* Items List */}
-              <div className="mt-10 pt-6 border-t border-gray-200 dark:border-gray-700">
+              <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    Menu Items in this Category
+                    Menu Items
                   </h3>
                   <Link
-                    href={`/hotel-admin/pos/menu/items/new?category=${id}`}
-                    className="text-[rgb(0,173,181)] hover:underline text-sm font-medium flex items-center gap-1"
+                    href={`/hotel-admin/pos/menu/items/new?category=${categoryId}&subCategory=${subCategoryId}`}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-[rgb(0,173,181)] text-white rounded-lg hover:bg-[rgb(0,173,181)]/90 text-sm font-medium transition-colors"
                   >
-                    + Add New Item
+                    <Plus className="h-4 w-4" />
+                    Add Item
                   </Link>
                 </div>
 
                 {items.length === 0 ? (
                   <div className="bg-gray-50 dark:bg-gray-800/50 p-8 rounded-xl text-center text-gray-500 dark:text-gray-400">
-                    No items in this category yet
+                    No items in this sub-category yet
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

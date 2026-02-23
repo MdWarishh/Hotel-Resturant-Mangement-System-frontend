@@ -1,10 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiRequest } from '@/services/api'
-import { connectPOSSocket, disconnectPOSSocket } from '@/services/posSocket'
-import { Loader2, AlertCircle, Bell, BellOff, UtensilsCrossed, Clock, ArrowRight, CheckCircle, XCircle, RefreshCw, Users, ShoppingCart, BedDouble, Search, Filter, Printer, Fullscreen, RotateCcw, TrendingUp, ChefHat } from 'lucide-react'
+import { connectPOSSocket } from '@/services/posSocket'
+import { 
+  Loader2, AlertCircle, Bell, BellOff, UtensilsCrossed, Clock, 
+  ArrowRight, CheckCircle, XCircle, RefreshCw, Users, ShoppingCart, 
+  BedDouble, Search, Fullscreen, TrendingUp, ChefHat 
+} from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 
 export default function KitchenDisplayPage() {
@@ -23,15 +27,20 @@ export default function KitchenDisplayPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState('oldest')
 
-  // Notification sound
-  const playNotificationSound = () => {
-    if (soundEnabled) {
+  // ✅ FIX 1: useRef se soundEnabled ka latest value hamesha milega — stale closure nahi hoga
+  const soundEnabledRef = useRef(soundEnabled)
+  useEffect(() => {
+    soundEnabledRef.current = soundEnabled
+  }, [soundEnabled])
+
+  // Notification sound — ref use karta hai isliye hamesha latest value milti hai
+  const playNotificationSound = useCallback(() => {
+    if (soundEnabledRef.current) {
       const audio = new Audio('/sounds/beep.mp3')
       audio.play().catch(err => console.error('Sound playback failed:', err))
     }
-  }
+  }, []) // ✅ No dependency on soundEnabled — ref se lega
 
-  // Full screen toggle
   const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen()
@@ -46,11 +55,9 @@ export default function KitchenDisplayPage() {
   const fetchKitchenOrders = async () => {
     setLoading(true)
     setError(null)
-
     try {
       const res = await apiRequest('/pos/orders/kitchen')
-     const kitchenOrders = res.data?.orders || res.data || [];
-     console.log('Kitchen API full response:', res.data.orders?.length, res.data.orders);
+      const kitchenOrders = res.data?.orders || res.data || []
       console.log('📦 Fetched kitchen orders:', kitchenOrders.length)
       setOrders(kitchenOrders)
     } catch (err) {
@@ -61,9 +68,9 @@ export default function KitchenDisplayPage() {
     }
   }
 
-  // Socket connection and event handlers
+  // ✅ FIX 2: Socket useEffect mein KOI dependency nahi — sirf ek baar mount hoga
+  // soundEnabled ki zaroorat nahi kyunki ab ref use kar rahe hain
   useEffect(() => {
-    // Initial fetch
     fetchKitchenOrders()
 
     const token = localStorage.getItem('token')
@@ -74,7 +81,6 @@ export default function KitchenDisplayPage() {
 
     const socket = connectPOSSocket(token)
 
-    // Connection event handlers
     socket.on('connect', () => {
       console.log('✅ Kitchen connected to POS socket')
     })
@@ -87,82 +93,77 @@ export default function KitchenDisplayPage() {
       console.log('⚠️ Kitchen socket disconnected:', reason)
     })
 
-    // Order event handlers
-  const handleOrderCreated = (newOrder) => {
-  console.log('🆕 Kitchen received new order:', newOrder._id, newOrder.status);
-  
-  setOrders(prev => {
-    if (prev.some(o => o._id === newOrder._id)) return prev;
-    
-    console.log('✅ Adding new order to kitchen display');
-    playNotificationSound();
-    return [newOrder, ...prev]; // add regardless of status
-  });
-};
-
-const handleOrderUpdated = (updatedOrder) => {
-  console.log('🔄 Kitchen order updated:', updatedOrder._id, updatedOrder.status);
-  
-  setOrders((prev) => {
-    const exists = prev.some(o => o._id === updatedOrder._id);
-
-    if (!['pending', 'preparing'].includes(updatedOrder.status)) {
-      console.log('🗑️ Removing order from kitchen display as status is:', updatedOrder.status);
-      return prev.filter(o => o._id !== updatedOrder._id);
+    // ✅ FIX 3: setOrders mein functional update — prev se kaam karo, bahar ki state se nahi
+    const handleOrderCreated = (newOrder) => {
+      console.log('🆕 Kitchen received new order:', newOrder._id, newOrder.status)
+      setOrders(prev => {
+        if (prev.some(o => o._id === newOrder._id)) return prev
+        console.log('✅ Adding new order to kitchen display')
+        playNotificationSound()
+        return [newOrder, ...prev]
+      })
     }
-    
-    if (!exists) {
-      // New order arrived via update (sometimes happens)
-      console.log('➕ Adding previously missing order via update');
-      playNotificationSound();
-      return [updatedOrder, ...prev];
-    }
-    
-    // Just update in place (no removal)
-    console.log('🔄 Updating existing order');
-    return prev.map(o => o._id === updatedOrder._id ? updatedOrder : o);
-  });
-};
-socket.onAny((eventName, ...args) => {
-  console.log(`[SOCKET ANY] Event received: ${eventName}`, args);
-});
 
-    // Register event listeners
+    const handleOrderUpdated = (updatedOrder) => {
+      console.log('Kitchen order updated:', updatedOrder._id, updatedOrder.status)
+      setOrders(prev => {
+        const exists = prev.some(o => o._id === updatedOrder._id)
+
+        // Sirf cancelled aur completed orders kitchen se hatao
+        if (['cancelled', 'completed'].includes(updatedOrder.status)) {
+          console.log('Removing order from kitchen:', updatedOrder.status)
+          return prev.filter(o => o._id !== updatedOrder._id)
+        }
+
+        if (!exists) {
+          console.log('Adding missing order via update event')
+          playNotificationSound()
+          return [updatedOrder, ...prev]
+        }
+
+        console.log('Updating existing order in place')
+        return prev.map(o => o._id === updatedOrder._id ? updatedOrder : o)
+      })
+    }
+
+    // order:paid pe order add karo (tera flow: payment hoti hai to order create hota hai)
+    const handleOrderPaid = (paidOrder) => {
+      console.log('Order paid received, adding to kitchen:', paidOrder._id)
+      setOrders(prev => {
+        const exists = prev.some(o => o._id === paidOrder._id)
+        if (!exists) {
+          playNotificationSound()
+          return [paidOrder, ...prev]
+        }
+        return prev.map(o => o._id === paidOrder._id ? paidOrder : o)
+      })
+    }
+
     socket.on('order:created', handleOrderCreated)
+    socket.on('order:new', handleOrderCreated)
     socket.on('order:updated', handleOrderUpdated)
-    socket.on('order:new', handleOrderCreated) // Alias event
-    socket.on('order:paid', (paidOrder) => {
-  console.log('💳 Received paid:', paidOrder._id, paidOrder.status);
-  setOrders(prev => {
-    const index = prev.findIndex(o => o._id === paidOrder._id);
-    if (index === -1) return [paidOrder, ...prev];
-    const newList = [...prev];
-    newList[index] = paidOrder;
-    return newList;
-  });
-});
-socket.onAny((eventName, ...args) => {
-  console.log(`[SOCKET ANY] Event received: ${eventName}`, args);
-});
+    socket.on('order:paid', handleOrderPaid)
 
-    // Cleanup function
+    socket.onAny((eventName, ...args) => {
+      console.log(`[SOCKET ANY] Event: ${eventName}`, args)
+    })
+
     return () => {
       console.log('🧹 Kitchen cleaning up socket listeners')
       socket.off('connect')
       socket.off('connect_error')
       socket.off('disconnect')
       socket.off('order:created', handleOrderCreated)
-      socket.off('order:updated', handleOrderUpdated)
       socket.off('order:new', handleOrderCreated)
-      
-      // Don't disconnect the socket - other pages might be using it
-      // Only turn off the listeners for this component
+      socket.off('order:updated', handleOrderUpdated)
+      socket.off('order:paid', handleOrderPaid)
+      socket.offAny()
     }
-  }, [soundEnabled]) // Include soundEnabled so playNotificationSound has the latest value
+  }, []) // ✅ Empty array — sirf mount/unmount par, soundEnabled change pe dobara nahi chalega
 
-  // Apply filters & sort
-  const applyFilters = (data) => {
-    let filtered = [...data]
+  // Re-apply filters when orders or filter settings change
+  useEffect(() => {
+    let filtered = [...orders]
 
     if (orderTypeFilter !== 'all') {
       filtered = filtered.filter(o => o.orderType === orderTypeFilter)
@@ -172,11 +173,9 @@ socket.onAny((eventName, ...args) => {
       filtered = filtered.filter(o => o.status === statusFilter)
     }
 
-    
-
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(o => 
+      filtered = filtered.filter(o =>
         o.orderNumber?.toLowerCase().includes(query) ||
         o.tableNumber?.toString().includes(query) ||
         o.room?.toLowerCase().includes(query) ||
@@ -184,36 +183,37 @@ socket.onAny((eventName, ...args) => {
       )
     }
 
-    // Sort
     filtered.sort((a, b) => {
-      if (sortBy === 'newest') {
-        return new Date(b.createdAt) - new Date(a.createdAt)
-      } else if (sortBy === 'totalAmount') {
-        return (b.pricing?.total || 0) - (a.pricing?.total || 0)
-      } else { // oldest
-        return new Date(a.createdAt) - new Date(b.createdAt)
-      }
+      if (sortBy === 'newest') return new Date(b.createdAt) - new Date(a.createdAt)
+      if (sortBy === 'totalAmount') return (b.pricing?.total || 0) - (a.pricing?.total || 0)
+      return new Date(a.createdAt) - new Date(b.createdAt) // oldest first default
     })
 
     setFilteredOrders(filtered)
-  }
-
-  // Re-apply filters when orders or filter settings change
-  useEffect(() => {
-    applyFilters(orders)
   }, [orderTypeFilter, statusFilter, searchQuery, sortBy, orders])
 
   const handleUpdateStatus = async (orderId, newStatus) => {
+    // ✅ FIX 4: Optimistic update — API response ka wait mat karo, turant UI update karo
+    setOrders(prev => {
+      if (!['pending', 'preparing'].includes(newStatus)) {
+        // cancelled ya koi aur status — list se hata do
+        return prev.filter(o => o._id !== orderId)
+      }
+      // Status update karo in place
+      return prev.map(o => o._id === orderId ? { ...o, status: newStatus } : o)
+    })
+
     try {
       await apiRequest(`/pos/orders/${orderId}/status`, {
         method: 'PATCH',
         body: JSON.stringify({ status: newStatus }),
       })
-      
-      // Socket will broadcast the update
+      // Socket event aayega aur state dobara sync ho jayegi — sab theek hai
     } catch (err) {
       console.error('Failed to update order status:', err)
       alert('Failed to update order status')
+      // ✅ Error hone par fresh data fetch karo — optimistic update rollback
+      fetchKitchenOrders()
     }
   }
 
@@ -241,7 +241,7 @@ socket.onAny((eventName, ...args) => {
           <p className="text-sm sm:text-base text-gray-300 mb-6">{error}</p>
           <button
             onClick={fetchKitchenOrders}
-            className="px-5 sm:px-6 py-2.5 sm:py-3 bg-[rgb(0,173,181)] hover:bg-[rgb(0,173,181)]/90 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.02]"
+            className="px-5 sm:px-6 py-2.5 sm:py-3 bg-[rgb(0,173,181)] hover:bg-[rgb(0,173,181)]/90 text-white rounded-lg font-semibold"
           >
             Retry
           </button>
@@ -255,7 +255,6 @@ socket.onAny((eventName, ...args) => {
       <div className="max-w-[1920px] mx-auto p-4 sm:p-6 lg:p-8">
         {/* Header with Stats */}
         <div className="mb-6 sm:mb-8">
-          {/* Title and Controls */}
           <div className="bg-gradient-to-r from-gray-800 to-gray-900 rounded-2xl shadow-2xl p-5 sm:p-6 lg:p-8 border border-gray-700 mb-6">
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 lg:gap-6">
               <div className="flex items-center gap-4 flex-1">
@@ -276,11 +275,10 @@ socket.onAny((eventName, ...args) => {
                 <button
                   onClick={() => setSoundEnabled(!soundEnabled)}
                   className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition-all font-semibold shadow-lg hover:shadow-xl transform hover:scale-[1.02] flex-1 sm:flex-initial ${
-                    soundEnabled 
-                      ? 'bg-gradient-to-r from-green-600 to-green-700 text-white' 
+                    soundEnabled
+                      ? 'bg-gradient-to-r from-green-600 to-green-700 text-white'
                       : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                   }`}
-                  title={soundEnabled ? 'Disable Sound' : 'Enable Sound'}
                 >
                   {soundEnabled ? <Bell className="h-5 w-5" /> : <BellOff className="h-5 w-5" />}
                   <span className="hidden sm:inline text-sm">{soundEnabled ? 'Sound On' : 'Sound Off'}</span>
@@ -288,8 +286,7 @@ socket.onAny((eventName, ...args) => {
 
                 <button
                   onClick={toggleFullScreen}
-                  className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-700 text-white rounded-xl hover:bg-gray-600 font-semibold shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.02] flex-1 sm:flex-initial"
-                  title="Toggle Full Screen"
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-700 text-white rounded-xl hover:bg-gray-600 font-semibold shadow-lg transition-all transform hover:scale-[1.02] flex-1 sm:flex-initial"
                 >
                   <Fullscreen className="h-5 w-5" />
                   <span className="hidden sm:inline text-sm">Fullscreen</span>
@@ -297,7 +294,7 @@ socket.onAny((eventName, ...args) => {
 
                 <button
                   onClick={fetchKitchenOrders}
-                  className="flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-[rgb(0,173,181)] to-[rgb(0,153,161)] hover:from-[rgb(0,173,181)]/90 hover:to-[rgb(0,153,161)]/90 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.02] flex-1 sm:flex-initial"
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-[rgb(0,173,181)] to-[rgb(0,153,161)] text-white rounded-xl font-semibold shadow-lg transition-all transform hover:scale-[1.02] flex-1 sm:flex-initial"
                 >
                   <RefreshCw className="h-5 w-5" />
                   <span className="hidden sm:inline text-sm">Refresh</span>
@@ -308,30 +305,10 @@ socket.onAny((eventName, ...args) => {
 
           {/* Stats Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6">
-            <StatCard
-              icon={<Clock className="h-6 w-6" />}
-              label="Pending"
-              value={orders.filter(o => o.status === 'pending').length}
-              color="yellow"
-            />
-            <StatCard
-              icon={<UtensilsCrossed className="h-6 w-6" />}
-              label="Preparing"
-              value={orders.filter(o => o.status === 'preparing').length}
-              color="blue"
-            />
-            <StatCard
-              icon={<CheckCircle className="h-6 w-6" />}
-              label="Ready"
-              value={orders.filter(o => o.status === 'ready').length}
-              color="green"
-            />
-            <StatCard
-              icon={<TrendingUp className="h-6 w-6" />}
-              label="Total Orders"
-              value={orders.length}
-              color="teal"
-            />
+            <StatCard icon={<Clock className="h-6 w-6" />} label="Pending" value={orders.filter(o => o.status === 'pending').length} color="yellow" />
+            <StatCard icon={<UtensilsCrossed className="h-6 w-6" />} label="Preparing" value={orders.filter(o => o.status === 'preparing').length} color="blue" />
+            <StatCard icon={<CheckCircle className="h-6 w-6" />} label="Ready" value={orders.filter(o => o.status === 'ready').length} color="green" />
+            <StatCard icon={<TrendingUp className="h-6 w-6" />} label="Total Orders" value={orders.length} color="teal" />
           </div>
         </div>
 
@@ -360,19 +337,19 @@ socket.onAny((eventName, ...args) => {
               <option value="room-service">Room Service</option>
             </select>
 
-          <select
-    value={statusFilter}
-    onChange={e => setStatusFilter(e.target.value)}
-    className="px-4 py-3 sm:py-3.5 border-2 border-gray-700 rounded-xl focus:border-[rgb(0,173,181)] bg-gray-900 text-white outline-none transition-all text-sm sm:text-base font-semibold"
-  >
-    <option value="all">All Statuses</option>
-    <option value="pending">Pending</option>
-    <option value="preparing">Preparing</option>
-    <option value="ready">Ready</option>
-    <option value="served">Served</option>
-    <option value="paid">Paid</option>
-    <option value="cancelled">Cancelled</option>
-  </select>
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              className="px-4 py-3 sm:py-3.5 border-2 border-gray-700 rounded-xl focus:border-[rgb(0,173,181)] bg-gray-900 text-white outline-none transition-all text-sm sm:text-base font-semibold"
+            >
+              <option value="all">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="preparing">Preparing</option>
+              <option value="ready">Ready</option>
+              <option value="served">Served</option>
+              <option value="paid">Paid</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
 
             <select
               value={sortBy}
@@ -424,7 +401,6 @@ function StatCard({ icon, label, value, color }) {
     green: 'from-green-600 to-green-700',
     teal: 'from-[rgb(0,173,181)] to-[rgb(0,153,161)]',
   }
-
   return (
     <div className="bg-gray-800 border-2 border-gray-700 rounded-2xl p-4 sm:p-5 lg:p-6 shadow-xl hover:shadow-2xl transition-all hover:scale-[1.02]">
       <div className="flex items-center gap-3 sm:gap-4">
@@ -475,28 +451,24 @@ function OrderCard({ order, onUpdateStatus, onPrintChit }) {
       {/* Items */}
       <div className="mb-4 bg-gray-900/50 rounded-xl p-4">
         <h4 className="text-xs sm:text-sm font-bold text-gray-300 mb-3 uppercase tracking-wide">Order Items</h4>
-        <ul className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+        <ul className="space-y-2 max-h-48 overflow-y-auto">
           {order.items?.map((item, idx) => (
             <li key={idx} className="text-sm flex justify-between items-start gap-2 pb-2 border-b border-gray-700/50 last:border-0 last:pb-0">
               <span className="flex-1 font-medium">
-                <span className="text-[rgb(0,173,181)] font-bold">{item.quantity}x</span> {item.name} 
+                <span className="text-[rgb(0,173,181)] font-bold">{item.quantity}x</span> {item.name}
                 {item.variant && <span className="text-gray-500 text-xs"> ({item.variant})</span>}
               </span>
-              {/* <span className="font-bold text-green-400">₹{(item.quantity * item.price).toLocaleString()}</span> */}
             </li>
           ))}
         </ul>
       </div>
 
-      {/* Time and Total */}
-      <div className="flex items-center justify-between text-sm mb-4 p-3 bg-gray-900/50 rounded-xl">
+      {/* Time */}
+      <div className="flex items-center text-sm mb-4 p-3 bg-gray-900/50 rounded-xl">
         <div className="flex items-center gap-2 text-gray-400">
           <Clock className="h-4 w-4" />
           <span className="font-medium">{formatDistanceToNow(new Date(order.createdAt), { addSuffix: true })}</span>
         </div>
-        {/* <div className="font-bold text-lg text-green-400">
-          ₹{order.pricing?.total?.toLocaleString() || '0'}
-        </div> */}
       </div>
 
       {/* Actions */}
@@ -541,7 +513,6 @@ function getStatusBadge(status) {
     paid: 'bg-gradient-to-r from-gray-600 to-gray-700 text-white',
     cancelled: 'bg-gradient-to-r from-red-600 to-red-700 text-white',
   }
-
   return (
     <span className={`inline-flex px-3 py-1.5 rounded-xl text-xs font-bold capitalize shadow-lg ${styles[status] || 'bg-gray-700 text-white'}`}>
       {status}

@@ -3,13 +3,14 @@
 import { useEffect, useState } from 'react';
 import { apiRequest } from '@/services/api';
 import { useOrder } from '@/context/OrderContext';
-import { Loader2, X, Tag, Search, AlertCircle, Plus, Minus } from 'lucide-react';
+import { Loader2, X, Search, AlertCircle, Plus, Minus } from 'lucide-react';
 
 export default function MenuSection() {
   const { addItem } = useOrder();
 
   const [menu, setMenu] = useState([]);
   const [activeCategoryId, setActiveCategoryId] = useState(null);
+  const [activeSubCategoryId, setActiveSubCategoryId] = useState('all'); // 'all' = sabhi items
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -36,6 +37,47 @@ export default function MenuSection() {
     fetchMenu();
   }, []);
 
+  // Jab category change ho, subcategory reset ho jaye
+  const handleCategoryChange = (categoryId) => {
+    setActiveCategoryId(categoryId);
+    setActiveSubCategoryId('all');
+  };
+
+  // Active category ka data
+  const activeCategory = menu.find(cat => cat.category._id === activeCategoryId) || menu[0];
+
+  // Active category ke items se subcategories nikalo (unique)
+  const subCategoriesInActiveCategory = (() => {
+    if (!activeCategory) return [];
+    const map = new Map();
+    activeCategory.items.forEach(item => {
+      if (item.subCategory) {
+        const id = item.subCategory._id || item.subCategory;
+        const name = item.subCategory.name || item.subCategory;
+        if (!map.has(id)) map.set(id, { _id: id, name });
+      }
+    });
+    return Array.from(map.values());
+  })();
+
+  // Search + subcategory filter
+  const filteredItems = (() => {
+    if (!activeCategory) return [];
+    return activeCategory.items.filter(item => {
+      const matchesSearch =
+        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.description?.toLowerCase().includes(searchQuery.toLowerCase());
+
+      const matchesSubCategory =
+        activeSubCategoryId === 'all' ||
+        (item.subCategory &&
+          (item.subCategory._id || item.subCategory) === activeSubCategoryId);
+
+      return matchesSearch && matchesSubCategory;
+    });
+  })();
+
+  // Search ke time filtered categories (category tabs ke liye)
   const filteredMenu = menu
     .map(category => ({
       ...category,
@@ -45,8 +87,6 @@ export default function MenuSection() {
       ),
     }))
     .filter(category => category.items.length > 0);
-
-  const activeCategory = filteredMenu.find(cat => cat.category._id === activeCategoryId) || filteredMenu[0];
 
   const handleAddItem = (item, variant = null) => {
     if (!item.isAvailable) return;
@@ -59,26 +99,18 @@ export default function MenuSection() {
       quantity,
     });
 
-    // Reset quantity after add
     setQuantity(1);
-  };
-
-  const handleQuantityChange = (delta) => {
-    setQuantity(prev => Math.max(1, prev + delta));
   };
 
   if (loading) {
     return (
       <div className="p-6">
         <div className="animate-pulse space-y-6">
-          {/* Category Tabs Skeleton */}
           <div className="flex gap-3 overflow-x-auto pb-4">
             {[...Array(5)].map((_, i) => (
               <div key={i} className="h-10 w-32 bg-gray-200 dark:bg-gray-700 rounded-full flex-shrink-0" />
             ))}
           </div>
-
-          {/* Items Skeleton */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {[...Array(6)].map((_, i) => (
               <div key={i} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow">
@@ -100,11 +132,7 @@ export default function MenuSection() {
         <h3 className="text-xl font-semibold text-red-600 dark:text-red-400 mb-2">Error</h3>
         <p className="text-gray-600 dark:text-gray-400 mb-6">{error}</p>
         <button
-          onClick={() => {
-            setLoading(true);
-            setError(null);
-            fetchMenu();
-          }}
+          onClick={() => window.location.reload()}
           className="px-6 py-3 bg-[rgb(0,173,181)] text-white rounded-lg hover:bg-[rgb(0,173,181)]/90"
         >
           Retry
@@ -117,22 +145,27 @@ export default function MenuSection() {
     <div className="h-full flex flex-col">
       {/* Search & Categories */}
       <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 sticky top-0 z-10">
+        {/* Search */}
         <div className="relative mb-4">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
           <input
             type="text"
             placeholder="Search menu..."
             value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
+            onChange={e => {
+              setSearchQuery(e.target.value);
+              setActiveSubCategoryId('all');
+            }}
             className="w-full pl-10 pr-4 py-3 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:border-[rgb(0,173,181)] focus:ring-2 focus:ring-[rgb(0,173,181)]/30"
           />
         </div>
 
+        {/* Category Tabs */}
         <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
           {menu.map((cat) => (
             <button
               key={cat.category._id}
-              onClick={() => setActiveCategoryId(cat.category._id)}
+              onClick={() => handleCategoryChange(cat.category._id)}
               className={`flex-shrink-0 px-6 py-2 rounded-full text-sm font-medium transition-all ${
                 activeCategoryId === cat.category._id
                   ? 'bg-[rgb(0,173,181)] text-white shadow-md'
@@ -143,17 +176,48 @@ export default function MenuSection() {
             </button>
           ))}
         </div>
+
+        {/* Sub-Category Tabs — sirf tab dikhein jab subcategories hon */}
+        {subCategoriesInActiveCategory.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pt-3 pb-1 scrollbar-hide">
+            {/* "All" tab */}
+            <button
+              onClick={() => setActiveSubCategoryId('all')}
+              className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                activeSubCategoryId === 'all'
+                  ? 'bg-[rgb(0,173,181)]/15 border-[rgb(0,173,181)] text-[rgb(0,173,181)]'
+                  : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-[rgb(0,173,181)]'
+              }`}
+            >
+              All
+            </button>
+
+            {subCategoriesInActiveCategory.map(sub => (
+              <button
+                key={sub._id}
+                onClick={() => setActiveSubCategoryId(sub._id)}
+                className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                  activeSubCategoryId === sub._id
+                    ? 'bg-[rgb(0,173,181)]/15 border-[rgb(0,173,181)] text-[rgb(0,173,181)]'
+                    : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-[rgb(0,173,181)]'
+                }`}
+              >
+                {sub.name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Menu Items */}
       <div className="flex-1 overflow-y-auto p-6">
-        {filteredMenu.length === 0 ? (
+        {filteredItems.length === 0 ? (
           <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-            No items found in menu.
+            No items found.
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {activeCategory?.items.map((item) => (
+            {filteredItems.map((item) => (
               <div
                 key={item._id}
                 className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-lg transition-shadow"
@@ -169,14 +233,21 @@ export default function MenuSection() {
                 )}
 
                 <div className="p-4">
-                  <div className="flex justify-between items-start mb-2">
+                  <div className="flex justify-between items-start mb-1">
                     <h4 className="font-semibold text-gray-900 dark:text-white truncate">
                       {item.name}
                     </h4>
-                    <span className="text-lg font-bold text-[rgb(0,173,181)]">
+                    <span className="text-lg font-bold text-[rgb(0,173,181)] ml-2 flex-shrink-0">
                       ₹{item.price}
                     </span>
                   </div>
+
+                  {/* Sub-category badge — sirf tab dikhao jab ho */}
+                  {item.subCategory && (
+                    <span className="inline-block mb-2 px-2 py-0.5 text-[10px] font-medium rounded-full bg-[rgb(0,173,181)]/10 text-[rgb(0,173,181)] border border-[rgb(0,173,181)]/30">
+                      {item.subCategory.name || item.subCategory}
+                    </span>
+                  )}
 
                   <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
                     {item.description || 'No description'}
@@ -199,36 +270,17 @@ export default function MenuSection() {
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    {/* <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-md">
-                      <button
-                        onClick={() => handleQuantityChange(-1)}
-                        disabled={quantity <= 1}
-                        className="px-3 py-1 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50"
-                      >
-                        <Minus className="h-4 w-4" />
-                      </button>
-                      <span className="px-4 py-1 font-medium">{quantity}</span>
-                      <button
-                        onClick={() => handleQuantityChange(1)}
-                        className="px-3 py-1 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </button>
-                    </div> */}
-
-                    <button
-                      onClick={() => item.variants?.length > 0 ? setVariantPicker(item) : handleAddItem(item)}
-                      disabled={!item.isAvailable}
-                      className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                        item.isAvailable
-                          ? 'bg-[rgb(0,173,181)] text-white hover:bg-[rgb(0,173,181)]/90'
-                          : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      }`}
-                    >
-                      {item.variants?.length > 0 ? 'Select Variant' : 'Add'}
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => item.variants?.length > 0 ? setVariantPicker(item) : handleAddItem(item)}
+                    disabled={!item.isAvailable}
+                    className={`w-full px-4 py-2 rounded-lg font-medium transition-all ${
+                      item.isAvailable
+                        ? 'bg-[rgb(0,173,181)] text-white hover:bg-[rgb(0,173,181)]/90'
+                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    {item.variants?.length > 0 ? 'Select Variant' : 'Add'}
+                  </button>
                 </div>
               </div>
             ))}
@@ -250,21 +302,19 @@ export default function MenuSection() {
             </div>
 
             <div className="space-y-3">
-           {/* In MenuSection.js -> Variant Picker Modal */}
-{variantPicker.variants.map((v) => (
-  <button
-    key={v.name}
-    onClick={() => {
-      // FIX: Pass the whole variant object 'v', not just 'v.name'
-      handleAddItem(variantPicker, v); 
-      setVariantPicker(null);
-    }}
-    className="flex w-full items-center justify-between p-4 border rounded-lg hover:bg-gray-100 transition"
-  >
-    <span className="font-medium">{v.name}</span>
-    <span className="font-bold text-[rgb(0,173,181)]">₹{v.price}</span>
-  </button>
-))}
+              {variantPicker.variants.map((v) => (
+                <button
+                  key={v.name}
+                  onClick={() => {
+                    handleAddItem(variantPicker, v);
+                    setVariantPicker(null);
+                  }}
+                  className="flex w-full items-center justify-between p-4 border rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                >
+                  <span className="font-medium">{v.name}</span>
+                  <span className="font-bold text-[rgb(0,173,181)]">₹{v.price}</span>
+                </button>
+              ))}
             </div>
           </div>
         </div>

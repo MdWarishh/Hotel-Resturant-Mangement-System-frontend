@@ -4,17 +4,19 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiRequest } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
-import { 
+import {
   ArrowLeft, PackagePlus, Loader2, CheckCircle2, AlertCircle,
-  UserPlus, DollarSign, Scale, Archive, ToggleLeft, ToggleRight 
+  UserPlus, DollarSign, Scale, Archive, ToggleLeft, ToggleRight
 } from 'lucide-react';
 
 const CATEGORIES = [
   'food',
   'beverage',
-  'supplies',
+  'linen',
+  'toiletries',
   'cleaning',
   'amenities',
+  'other',
 ];
 
 const UNITS = ['kg', 'g', 'l', 'ml', 'pcs', 'box', 'packet', 'bottle', 'can'];
@@ -29,8 +31,14 @@ export default function CreateInventoryItemPage() {
     unit: '',
     currentStock: '0',
     minStock: '',
+    maxStock: '',  // ✅ Add this
+    reorderPoint: '',  // ✅ Add this
     purchasePrice: '',
-    supplier: '',
+    supplierName: '',  // ✅ Change from 'supplier'
+    supplierContact: '',  // ✅ Add this
+    supplierEmail: '',  // ✅ Add this
+    storageLocation: '',  // ✅ Add this
+    storageConditions: 'room-temp',  // ✅ Add this
     description: '',
     isActive: true,
   });
@@ -62,25 +70,35 @@ export default function CreateInventoryItemPage() {
     }
 
     try {
-      await apiRequest('/inventory', {
-        method: 'POST',
-        body: JSON.stringify({
-          hotel: user.hotel._id,
-          name: form.name.trim(),
-          category: form.category,
-          unit: form.unit,
-          quantity: {
-            current: Number(form.currentStock) || 0,
-            minimum: Number(form.minStock) || 0,
-          },
-          pricing: {
-            purchasePrice: Number(form.purchasePrice),
-          },
-          supplier: form.supplier.trim() || undefined,
-          description: form.description.trim() || undefined,
-          isActive: form.isActive,
-        }),
-      });
+    await apiRequest('/inventory', {
+  method: 'POST',
+  body: JSON.stringify({
+    hotel: user.hotel._id,
+    name: form.name.trim(),
+    category: form.category,
+    unit: form.unit,
+    quantity: {
+      current: Number(form.currentStock) || 0,
+      minimum: Number(form.minStock) || 0,
+      maximum: Number(form.maxStock) || null,
+    },
+    pricing: {
+      purchasePrice: Number(form.purchasePrice),
+    },
+    supplier: form.supplierName.trim() ? {
+      name: form.supplierName.trim(),
+      contact: form.supplierContact.trim(),
+      email: form.supplierEmail.trim(),
+    } : undefined,
+    storage: {
+      location: form.storageLocation.trim(),
+      conditions: form.storageConditions,
+    },
+    reorderPoint: Number(form.reorderPoint) || Number(form.minStock) || 0,
+    description: form.description.trim() || undefined,
+    isActive: form.isActive,
+  }),
+});
 
       setSuccess(true);
       setTimeout(() => {
@@ -242,6 +260,37 @@ export default function CreateInventoryItemPage() {
           </div>
         </div>
 
+        {/* Storage Section */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Storage Location</label>
+            <input
+              type="text"
+              name="storageLocation"
+              value={form.storageLocation}
+              onChange={handleChange}
+              className="w-full text-black px-5 py-4 border border-gray-200 rounded-2xl focus:border-teal-600 outline-none"
+              placeholder="e.g., Store Room A"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Storage Conditions</label>
+            <select
+              name="storageConditions"
+              value={form.storageConditions}
+              onChange={handleChange}
+              className="w-full text-black px-5 py-4 border border-gray-200 rounded-2xl focus:border-teal-600 outline-none bg-white"
+            >
+              <option value="room-temp">Room Temperature</option>
+              <option value="refrigerated">Refrigerated</option>
+              <option value="frozen">Frozen</option>
+              <option value="dry">Dry</option>
+              <option value="cool">Cool</option>
+            </select>
+          </div>
+        </div>
+
         {/* Description */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Description (optional)</label>
@@ -259,14 +308,12 @@ export default function CreateInventoryItemPage() {
         <div className="flex items-center gap-4">
           <div
             onClick={() => setForm(prev => ({ ...prev, isActive: !prev.isActive }))}
-            className={`w-14 h-8 flex items-center rounded-full cursor-pointer transition-all duration-300 ${
-              form.isActive ? 'bg-teal-600' : 'bg-gray-300'
-            }`}
+            className={`w-14 h-8 flex items-center rounded-full cursor-pointer transition-all duration-300 ${form.isActive ? 'bg-teal-600' : 'bg-gray-300'
+              }`}
           >
             <div
-              className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-all duration-300 ${
-                form.isActive ? 'translate-x-7' : 'translate-x-1'
-              }`}
+              className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-all duration-300 ${form.isActive ? 'translate-x-7' : 'translate-x-1'
+                }`}
             />
           </div>
           <span className="text-sm font-medium text-gray-700">

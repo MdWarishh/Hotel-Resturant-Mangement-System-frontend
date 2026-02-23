@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
 import { apiRequest } from '@/services/api'
-import { Loader2, Plus, UtensilsCrossed, Search, AlertCircle, Layers } from 'lucide-react'
+import { Loader2, Plus, UtensilsCrossed, Search, AlertCircle, Layers, Upload } from 'lucide-react'
 import Link from 'next/link'
 
 export default function MenuOverviewPage() {
@@ -74,6 +74,13 @@ export default function MenuOverviewPage() {
           >
             <Plus className="h-5 w-5" />
             New Category
+          </Link>
+          <Link
+            href="/hotel-admin/pos/menu/bulk-upload"
+            className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow transition"
+          >
+            <Upload className="h-5 w-5" />
+            Bulk Upload
           </Link>
           <Link
             href="/hotel-admin/pos/menu/items/new"

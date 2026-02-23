@@ -26,6 +26,7 @@ export default function NewMenuItemPage() {
 
   const [form, setForm] = useState({
     category: preSelectedCategory,
+    subCategory: '',
     name: '',
     description: '',
     price: '',
@@ -41,6 +42,11 @@ export default function NewMenuItemPage() {
 
   const [categories, setCategories] = useState([])
   const [loadingCategories, setLoadingCategories] = useState(true)
+
+  // Subcategory states
+  const [subCategories, setSubCategories] = useState([])
+  const [loadingSubCategories, setLoadingSubCategories] = useState(false)
+
   const [errors, setErrors] = useState({})
   const [submitLoading, setSubmitLoading] = useState(false)
   const [submitError, setSubmitError] = useState(null)
@@ -59,6 +65,50 @@ export default function NewMenuItemPage() {
       }
     }
     loadCategories()
+  }, [])
+
+  // Load subcategories when category changes
+  useEffect(() => {
+    if (!form.category) {
+      setSubCategories([])
+      setForm(prev => ({ ...prev, subCategory: '' }))
+      return
+    }
+
+    const loadSubCategories = async () => {
+      setLoadingSubCategories(true)
+      try {
+        const res = await apiRequest(`/pos/subcategories?category=${form.category}`)
+        setSubCategories(res.data?.subCategories || [])
+      } catch (err) {
+        console.error('Failed to load subcategories', err)
+        setSubCategories([])
+      } finally {
+        setLoadingSubCategories(false)
+      }
+    }
+
+    loadSubCategories()
+    // Reset subcategory selection when category changes
+    setForm(prev => ({ ...prev, subCategory: '' }))
+  }, [form.category])
+
+  // If preSelectedCategory is set on mount, load its subcategories too
+  useEffect(() => {
+    if (preSelectedCategory) {
+      const loadInitialSubCategories = async () => {
+        setLoadingSubCategories(true)
+        try {
+          const res = await apiRequest(`/pos/subcategories?category=${preSelectedCategory}`)
+          setSubCategories(res.data?.subCategories || [])
+        } catch (err) {
+          console.error('Failed to load subcategories', err)
+        } finally {
+          setLoadingSubCategories(false)
+        }
+      }
+      loadInitialSubCategories()
+    }
   }, [])
 
   const handleChange = (e) => {
@@ -180,6 +230,8 @@ export default function NewMenuItemPage() {
         tags: form.tags.length ? form.tags : undefined,
         images: cleanImages.length ? cleanImages : undefined,
         variants: cleanVariants.length ? cleanVariants : undefined,
+        // subCategory is optional — only send if selected
+        subCategory: form.subCategory || undefined,
       }
 
       const res = await apiRequest('/pos/items', {
@@ -274,6 +326,42 @@ export default function NewMenuItemPage() {
                 </select>
               )}
               {errors.category && <p className="mt-1.5 text-sm text-red-600">{errors.category}</p>}
+            </div>
+
+            {/* Sub Category — appears only when category is selected */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                Sub-Category
+                <span className="ml-1.5 text-xs text-gray-400 font-normal">(optional)</span>
+              </label>
+              {!form.category ? (
+                <div className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-700/50 text-gray-400 dark:text-gray-500 text-sm">
+                  Select a category first
+                </div>
+              ) : loadingSubCategories ? (
+                <div className="flex items-center gap-2 text-gray-500">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading sub-categories...
+                </div>
+              ) : subCategories.length === 0 ? (
+                <div className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-700/50 text-gray-400 dark:text-gray-500 text-sm">
+                  No sub-categories for this category
+                </div>
+              ) : (
+                <select
+                  name="subCategory"
+                  value={form.subCategory}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-[rgb(0,173,181)]"
+                >
+                  <option value="">None (no sub-category)</option>
+                  {subCategories.map(sub => (
+                    <option key={sub._id} value={sub._id}>
+                      {sub.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {/* Name */}

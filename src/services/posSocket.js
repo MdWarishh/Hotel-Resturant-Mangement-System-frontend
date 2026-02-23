@@ -1,32 +1,43 @@
-// src/services/posSocket.js
+// frontend/services/posSocket.js
+
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL;
+// ✅ FIX: Socket URL alag hona chahiye — /api prefix nahi chahiye socket ke liye
+// NEXT_PUBLIC_API_URL = http://localhost:5000/api  ← HTTP routes ke liye
+// Socket URL = http://localhost:5000               ← Socket ke liye (no /api)
+const SOCKET_BASE_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 
+  process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 
+  'http://localhost:5000';
 
+console.log('[POS Socket] Socket base URL:', SOCKET_BASE_URL);
 
 let socket = null;
 
 export const getPOSSocket = () => {
   if (!socket) {
-    socket = io(`${SOCKET_URL}/pos`, {
-      transports: ['websocket'],          // prefer websocket
-      reconnection: true,                 // ← critical
-      reconnectionAttempts: 10,           // try 10 times
-      reconnectionDelay: 1000,            // 1s delay
-      reconnectionDelayMax: 5000,         // max 5s
+    socket = io(`${SOCKET_BASE_URL}/pos`, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
       timeout: 20000,
-      autoConnect: false,                 // we control connect manually
+      autoConnect: false,
       withCredentials: true,
       forceNew: false,
     });
 
-    // Add global debug listeners (remove in production if you want)
     socket.on('connect', () => {
       console.log('[POS Socket] ✅ Connected to namespace /pos');
+      console.log('[POS Socket] Socket ID:', socket.id);
     });
 
     socket.on('disconnect', (reason) => {
       console.log('[POS Socket] ⚠️ Disconnected:', reason);
+      if (reason === 'io server disconnect') {
+        console.log('[POS Socket] Server disconnected, reconnecting...');
+        socket.connect();
+      }
     });
 
     socket.on('connect_error', (error) => {
@@ -44,24 +55,18 @@ export const getPOSSocket = () => {
   return socket;
 };
 
-/**
- * Connect with token – safe to call multiple times
- */
 export const connectPOSSocket = (token = null) => {
   const s = getPOSSocket();
 
-  // Update auth token every time (in case it changed)
   if (token) {
     s.auth = { token };
   } else {
-    // Fallback to localStorage if no token passed
     const storedToken = localStorage.getItem('token');
     if (storedToken) {
       s.auth = { token: storedToken };
     }
   }
 
-  // Only connect if not already connected
   if (!s.connected && !s.connecting) {
     console.log('[POS Socket] Attempting connection...');
     s.connect();
@@ -70,13 +75,10 @@ export const connectPOSSocket = (token = null) => {
   return s;
 };
 
-/**
- * Disconnect – use with caution, only when logging out
- */
 export const disconnectPOSSocket = () => {
   if (socket && socket.connected) {
     console.log('[POS Socket] Disconnecting...');
     socket.disconnect();
-    socket = null; // Reset only on explicit disconnect
+    socket = null;
   }
 };

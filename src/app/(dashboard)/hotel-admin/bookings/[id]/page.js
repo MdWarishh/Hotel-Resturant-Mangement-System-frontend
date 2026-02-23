@@ -78,8 +78,197 @@ export default function BookingDetailsPage() {
 
 
 const handleDownloadPDF = () => {
-  router.push(`/hotel-admin/bookings/${id}/invoice`);
-};
+    if (!booking) return
+
+    const hotelName = booking.hotel?.name || 'Hotel'
+    const hotelAddress = booking.hotel?.address
+      ? `${booking.hotel.address.street || ''}, ${booking.hotel.address.city || ''}, ${booking.hotel.address.state || ''} ${booking.hotel.address.pincode || ''}`
+      : ''
+    const hotelPhone = booking.hotel?.contact?.phone || ''
+    const hotelEmail = booking.hotel?.contact?.email || ''
+
+    const checkIn = booking.dates?.checkIn ? new Date(booking.dates.checkIn).toLocaleDateString('en-IN') : 'N/A'
+    const checkOut = booking.dates?.checkOut ? new Date(booking.dates.checkOut).toLocaleDateString('en-IN') : 'N/A'
+    const actualCheckIn = booking.dates?.actualCheckIn ? new Date(booking.dates.actualCheckIn).toLocaleString('en-IN') : null
+    const actualCheckOut = booking.dates?.actualCheckOut ? new Date(booking.dates.actualCheckOut).toLocaleString('en-IN') : null
+
+    const nightsCount = booking.dates?.checkIn && booking.dates?.checkOut
+      ? Math.ceil((new Date(booking.dates.checkOut) - new Date(booking.dates.checkIn)) / 86400000)
+      : 0
+
+    const roomCharges = booking.pricing?.roomCharges || 0
+    const extraCharges = booking.pricing?.extraCharges || 0
+    const tax = booking.pricing?.tax || 0
+    const total = booking.pricing?.total || 0
+    const advancePaid = booking.advancePayment || 0
+    const dueAmount = total - advancePaid
+
+    const payStatus = booking.paymentStatus || 'pending'
+    const paidColor = payStatus === 'paid' ? '#065f46' : payStatus === 'partially_paid' ? '#92400e' : '#991b1b'
+    const paidBg = payStatus === 'paid' ? '#d1fae5' : payStatus === 'partially_paid' ? '#fef3c7' : '#fee2e2'
+    const payLabel = payStatus === 'paid' ? 'PAID' : payStatus === 'partially_paid' ? 'PARTIALLY PAID' : 'PENDING'
+
+    const invoiceHTML = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<title>Booking Invoice - ${booking.bookingNumber}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: 'Times New Roman', Georgia, serif; background:#fff; color:#111; padding:40px; max-width:820px; margin:0 auto; }
+
+  /* ── HEADER ── */
+  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:28px; padding-bottom:20px; border-bottom:3px solid #111; }
+  .hotel-info h1 { font-size:22px; font-weight:900; color:#111; letter-spacing:1px; text-transform:uppercase; margin-bottom:6px; }
+  .hotel-info p { font-size:12px; color:#444; line-height:1.7; }
+  .invoice-title { text-align:right; }
+  .invoice-title h2 { font-size:32px; font-weight:900; color:#c0392b; letter-spacing:2px; font-style:italic; }
+  .invoice-title .num { font-size:14px; color:#111; font-weight:700; margin-top:4px; letter-spacing:1px; }
+  .invoice-title .date { font-size:11px; color:#666; margin-top:4px; }
+
+  /* ── INFO SECTION ── */
+  .info-section { display:flex; justify-content:space-between; gap:24px; margin-bottom:28px; }
+  .col { flex:1; border:1.5px solid #111; padding:14px 16px; }
+  .section-label { font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:2px; color:#c0392b; margin-bottom:10px; padding-bottom:6px; border-bottom:2px solid #c0392b; }
+  .info-row { display:flex; gap:8px; margin-bottom:6px; font-size:12.5px; }
+  .info-label { color:#666; font-weight:500; min-width:110px; }
+  .info-value { color:#111; font-weight:700; }
+  .badge { display:inline-block; padding:2px 10px; border-radius:2px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; background:${paidBg}; color:${paidColor}; border:1px solid ${paidColor}; }
+
+  /* ── TABLE ── */
+  table { width:100%; border-collapse:collapse; margin-bottom:20px; border:1.5px solid #111; }
+  thead tr { background:#111; }
+  thead th { padding:11px 12px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:1px; color:#fff; text-align:left; }
+  thead th:last-child { text-align:right; padding-right:12px; }
+  tbody tr:nth-child(even) { background:#f7f7f7; }
+  tbody td { padding:11px 12px; font-size:13px; color:#111; border-bottom:1px solid #e5e5e5; }
+  tbody td:last-child { text-align:right; font-weight:700; padding-right:12px; }
+
+  /* ── TOTALS ── */
+  .totals-section { display:flex; justify-content:flex-end; margin-bottom:28px; }
+  .totals-box { width:300px; border:1.5px solid #111; }
+  .totals-row { display:flex; justify-content:space-between; padding:9px 14px; font-size:13px; border-bottom:1px solid #ddd; }
+  .totals-row:last-child { border-bottom:none; }
+  .totals-row .lbl { color:#555; }
+  .totals-row .val { font-weight:700; color:#111; }
+  .grand { background:#111; padding:13px 14px; }
+  .grand .lbl { color:#fff; font-size:14px; font-weight:800; }
+  .grand .val { color:#c0392b; font-size:16px; font-weight:900; }
+  .due-row { background:#fff0f0; padding:12px 14px; }
+  .due-row .lbl { color:#c0392b; font-weight:800; }
+  .due-row .val { color:#c0392b; font-weight:900; }
+
+  /* ── FOOTER ── */
+  .footer { text-align:center; margin-top:32px; padding-top:16px; border-top:3px double #111; }
+  .footer .ty { font-size:15px; font-weight:900; color:#c0392b; margin-bottom:4px; text-transform:uppercase; letter-spacing:2px; }
+  .footer p { font-size:11px; color:#666; line-height:1.8; }
+
+  @media print {
+    body { padding:20px; }
+    @page { margin:0.5cm; size:A4; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="hotel-info">
+    <h1>${hotelName}</h1>
+    ${hotelAddress ? `<p>${hotelAddress}</p>` : ''}
+    ${hotelPhone ? `<p>Phone: ${hotelPhone}</p>` : ''}
+    ${hotelEmail ? `<p>Email: ${hotelEmail}</p>` : ''}
+  </div>
+  <div class="invoice-title">
+    <h2>Booking Invoice</h2>
+    <div class="num"># ${booking.bookingNumber}</div>
+    <div class="date">Generated: ${new Date().toLocaleDateString('en-IN')}</div>
+  </div>
+</div>
+
+<!-- Guest + Booking Info -->
+<div class="info-section">
+  <div class="col">
+    <div class="section-label">Guest Details</div>
+    <div class="info-row"><span class="info-label">Name</span><span class="info-value">${booking.guest?.name || 'N/A'}</span></div>
+    ${booking.guest?.phone ? `<div class="info-row"><span class="info-label">Phone</span><span class="info-value">${booking.guest.phone}</span></div>` : ''}
+    ${booking.guest?.email ? `<div class="info-row"><span class="info-label">Email</span><span class="info-value">${booking.guest.email}</span></div>` : ''}
+    ${booking.guest?.idProof?.type ? `<div class="info-row"><span class="info-label">ID Proof</span><span class="info-value">${booking.guest.idProof.type.toUpperCase()} - ${booking.guest.idProof.number || ''}</span></div>` : ''}
+    ${booking.source ? `<div class="info-row"><span class="info-label">Booked Via</span><span class="info-value">${booking.source}</span></div>` : ''}
+  </div>
+  <div class="col">
+    <div class="section-label">Booking Info</div>
+    <div class="info-row"><span class="info-label">Booking No</span><span class="info-value">${booking.bookingNumber}</span></div>
+    <div class="info-row"><span class="info-label">Room</span><span class="info-value">Room ${booking.room?.roomNumber || 'N/A'} - ${booking.room?.roomType || ''}</span></div>
+    <div class="info-row"><span class="info-label">Nights</span><span class="info-value">${nightsCount} Night${nightsCount !== 1 ? 's' : ''}</span></div>
+    <div class="info-row"><span class="info-label">Check-in</span><span class="info-value">${actualCheckIn || checkIn}</span></div>
+    <div class="info-row"><span class="info-label">Check-out</span><span class="info-value">${actualCheckOut || checkOut}</span></div>
+    <div class="info-row"><span class="info-label">Status</span><span class="info-value">${(booking.status || '').replace('_', ' ').toUpperCase()}</span></div>
+    <div class="info-row"><span class="info-label">Payment</span><span class="badge">${payLabel}</span></div>
+  </div>
+</div>
+
+<!-- Charges Table -->
+<table>
+  <thead>
+    <tr>
+      <th>Description</th>
+      <th>Nights</th>
+      <th style="text-align:right;padding-right:12px;">Amount</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Room ${booking.room?.roomNumber || ''} - ${booking.room?.roomType || 'Room'} Charges</td>
+      <td>${nightsCount} Night${nightsCount !== 1 ? 's' : ''}</td>
+      <td>&#8377;${roomCharges.toLocaleString('en-IN')}</td>
+    </tr>
+    ${extraCharges > 0 ? `
+    <tr>
+      <td>Extra Guest Charges</td>
+      <td>—</td>
+      <td>&#8377;${extraCharges.toLocaleString('en-IN')}</td>
+    </tr>` : ''}
+    ${booking.specialRequests ? `
+    <tr style="background:#fff8f8;">
+      <td colspan="3" style="font-size:12px;color:#c0392b;padding:8px 12px;border-left:3px solid #c0392b;">
+        <strong>Special Requests:</strong> ${booking.specialRequests}
+      </td>
+    </tr>` : ''}
+  </tbody>
+</table>
+
+<!-- Totals -->
+<div class="totals-section">
+  <div class="totals-box">
+    <div class="totals-row"><span class="lbl">Room Charges</span><span class="val">&#8377;${roomCharges.toLocaleString('en-IN')}</span></div>
+    ${extraCharges > 0 ? `<div class="totals-row"><span class="lbl">Extra Charges</span><span class="val">&#8377;${extraCharges.toLocaleString('en-IN')}</span></div>` : ''}
+    <div class="totals-row"><span class="lbl">GST (5%)</span><span class="val">&#8377;${tax.toLocaleString('en-IN')}</span></div>
+    <div class="totals-row grand"><span class="lbl">Total Amount</span><span class="val">&#8377;${total.toLocaleString('en-IN')}</span></div>
+    <div class="totals-row" style="background:#f0fdf4;border-bottom:1px solid #ddd;">
+      <span class="lbl" style="color:#166534;font-weight:700;">Advance Paid</span>
+      <span class="val" style="color:#166534;">&#8377;${advancePaid.toLocaleString('en-IN')}</span>
+    </div>
+    ${dueAmount > 0 ? `<div class="totals-row due-row"><span class="lbl">Balance Due</span><span class="val">&#8377;${dueAmount.toLocaleString('en-IN')}</span></div>` : ''}
+  </div>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  <p class="ty">Thank you for staying with us!</p>
+  <p>This is a computer-generated invoice and does not require a signature.</p>
+  ${booking.createdBy?.name ? `<p>Booking created by: ${booking.createdBy.name}</p>` : ''}
+  ${hotelPhone || hotelEmail ? `<p>${hotelPhone ? 'Ph: ' + hotelPhone : ''} ${hotelEmail ? '| ' + hotelEmail : ''}</p>` : ''}
+</div>
+
+<script>window.onload=function(){window.print();}</script>
+</body>
+</html>`
+
+    const w = window.open('', '_blank', 'width=900,height=700')
+    w.document.write(invoiceHTML)
+    w.document.close()
+  };
 
   if (loading) {
     return (
@@ -126,14 +315,12 @@ const handleDownloadPDF = () => {
             <ArrowLeft className="h-5 w-5" /> Back
           </button>
 
-          {booking.status === 'checked_out' && (
-            <button
+          <button
               onClick={handleDownloadPDF}
               className="flex items-center gap-3 bg-teal-600 text-white font-semibold px-8 py-3 rounded-2xl hover:bg-teal-700 shadow-lg"
             >
               <Download className="h-5 w-5" /> Download Invoice
             </button>
-          )}
         </div>
       </div>
 

@@ -5,10 +5,10 @@ import { useRouter } from 'next/navigation';
 import { 
   Upload, Download, FileSpreadsheet, CheckCircle2, 
   XCircle, AlertCircle, ArrowLeft, Loader2, Info,
-  Package, ShoppingCart, TrendingUp
+  UtensilsCrossed, Layers, TrendingUp
 } from 'lucide-react';
 
-export default function InventoryBulkUploadPage() {
+export default function MenuBulkUploadPage() {
   const router = useRouter();
 
   const [file, setFile] = useState(null);
@@ -23,7 +23,7 @@ export default function InventoryBulkUploadPage() {
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/inventory/bulk-upload/template`,
+        `${process.env.NEXT_PUBLIC_API_URL}/pos/bulk-upload/template`,
         {
           method: 'GET',
           headers: {
@@ -40,7 +40,7 @@ export default function InventoryBulkUploadPage() {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', 'Inventory_Upload_Template.xlsx');
+      link.setAttribute('download', 'Menu_Items_Upload_Template.xlsx');
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
@@ -105,7 +105,6 @@ export default function InventoryBulkUploadPage() {
       return;
     }
 
-    // 🔥 Prevent multiple submissions
     if (uploading) {
       return;
     }
@@ -119,7 +118,7 @@ export default function InventoryBulkUploadPage() {
 
       const token = localStorage.getItem('token');
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/inventory/bulk-upload`,
+        `${process.env.NEXT_PUBLIC_API_URL}/pos/bulk-upload`,
         {
           method: 'POST',
           headers: {
@@ -141,7 +140,7 @@ export default function InventoryBulkUploadPage() {
         setTimeout(() => {
           if (data.data.errorCount === 0) {
             setTimeout(() => {
-              router.push('/hotel-admin/inventory');
+              router.push('/hotel-admin/pos/menu');
             }, 3000);
           }
         }, 1000);
@@ -154,85 +153,74 @@ export default function InventoryBulkUploadPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-5xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <button
             onClick={() => router.back()}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4 transition-colors"
+            className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mb-4 transition-colors"
           >
             <ArrowLeft className="h-5 w-5" />
-            <span className="font-medium">Back to Inventory</span>
+            <span className="font-medium">Back to Menu</span>
           </button>
-          <h1 className="text-4xl font-bold text-gray-900">Bulk Upload Inventory</h1>
-          <p className="mt-2 text-gray-600">Upload multiple inventory items at once using Excel</p>
+          <h1 className="text-4xl font-bold text-gray-900 dark:text-white">Bulk Upload Menu Items</h1>
+          <p className="mt-2 text-gray-600 dark:text-gray-400">Upload multiple menu items at once using Excel</p>
         </div>
 
         {/* Info Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-gradient-to-br from-sky-50 to-sky-100 rounded-2xl p-6 border border-sky-200">
+          <div className="bg-gradient-to-br from-teal-50 to-teal-100 dark:from-teal-900/30 dark:to-teal-800/30 rounded-2xl p-6 border border-teal-200 dark:border-teal-700">
             <div className="flex items-center gap-3 mb-3">
-              <div className="p-3 bg-sky-600 rounded-xl">
+              <div className="p-3 bg-[rgb(0,173,181)] rounded-xl">
                 <FileSpreadsheet className="h-6 w-6 text-white" />
               </div>
-              <h3 className="font-semibold text-gray-900">Step 1</h3>
+              <h3 className="font-semibold text-gray-900 dark:text-white">Step 1</h3>
             </div>
-            <p className="text-sm text-gray-700">Download the Excel template with sample inventory data</p>
+            <p className="text-sm text-gray-700 dark:text-gray-300">Download the Excel template with sample menu data</p>
           </div>
 
-          <div className="bg-gradient-to-br from-violet-50 to-violet-100 rounded-2xl p-6 border border-violet-200">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-3 bg-violet-600 rounded-xl">
-                <Package className="h-6 w-6 text-white" />
-              </div>
-              <h3 className="font-semibold text-gray-900">Step 2</h3>
-            </div>
-            <p className="text-sm text-gray-700">Fill in your inventory items with all details</p>
-          </div>
-
-          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-2xl p-6 border border-emerald-200">
+          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/30 dark:to-emerald-800/30 rounded-2xl p-6 border border-emerald-200 dark:border-emerald-700">
             <div className="flex items-center gap-3 mb-3">
               <div className="p-3 bg-emerald-600 rounded-xl">
+                <UtensilsCrossed className="h-6 w-6 text-white" />
+              </div>
+              <h3 className="font-semibold text-gray-900 dark:text-white">Step 2</h3>
+            </div>
+            <p className="text-sm text-gray-700 dark:text-gray-300">Fill in your menu items with all details</p>
+          </div>
+
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 rounded-2xl p-6 border border-blue-200 dark:border-blue-700">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-3 bg-blue-600 rounded-xl">
                 <Upload className="h-6 w-6 text-white" />
               </div>
-              <h3 className="font-semibold text-gray-900">Step 3</h3>
+              <h3 className="font-semibold text-gray-900 dark:text-white">Step 3</h3>
             </div>
-            <p className="text-sm text-gray-700">Upload the file and review import results</p>
+            <p className="text-sm text-gray-700 dark:text-gray-300">Upload the file and review import results</p>
           </div>
         </div>
 
         {/* Template Download */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 mb-8">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-8 mb-8">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Download Template</h2>
-              <p className="text-gray-600 mb-6">
-                Get the Excel template with sample data for both restaurant and hotel inventory
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Download Template</h2>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
+                Get the Excel template with sample menu items and categories
               </p>
               
-              <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 mb-6">
+              <div className="bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-700 rounded-xl p-4 mb-6">
                 <div className="flex gap-3">
-                  <Info className="h-5 w-5 text-sky-600 flex-shrink-0 mt-0.5" />
-                  <div className="text-sm text-sky-900">
+                  <Info className="h-5 w-5 text-[rgb(0,173,181)] flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-teal-900 dark:text-teal-100">
                     <p className="font-semibold mb-2">Template includes sample data for:</p>
-                    <div className="grid grid-cols-2 gap-2 text-sky-800">
-                      <div>
-                        <p className="font-medium">🍽️ Restaurant:</p>
-                        <ul className="list-disc list-inside text-xs ml-2 space-y-1">
-                          <li>Food items (rice, vegetables)</li>
-                          <li>Beverages (milk, drinks)</li>
-                        </ul>
-                      </div>
-                      <div>
-                        <p className="font-medium">🏨 Hotel:</p>
-                        <ul className="list-disc list-inside text-xs ml-2 space-y-1">
-                          <li>Linen (towels, bedsheets)</li>
-                          <li>Toiletries (shampoo, soap)</li>
-                          <li>Cleaning supplies</li>
-                        </ul>
-                      </div>
-                    </div>
+                    <ul className="list-disc list-inside space-y-1 text-teal-800 dark:text-teal-200">
+                      <li>Starters (Veg & Non-veg sub-categories)</li>
+                      <li>Main Course items with pricing</li>
+                      <li>Beverages (Hot & Cold drinks)</li>
+                      <li>Auto-creates categories & sub-categories if they don't exist</li>
+                    </ul>
                   </div>
                 </div>
               </div>
@@ -240,7 +228,7 @@ export default function InventoryBulkUploadPage() {
               <button
                 onClick={handleDownloadTemplate}
                 disabled={downloading}
-                className="flex items-center gap-3 bg-sky-600 hover:bg-sky-700 text-white font-semibold px-6 py-3 rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-3 bg-[rgb(0,173,181)] hover:bg-[rgb(0,173,181)]/90 text-white font-semibold px-6 py-3 rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {downloading ? (
                   <>
@@ -256,22 +244,22 @@ export default function InventoryBulkUploadPage() {
               </button>
             </div>
             <div className="hidden lg:block">
-              <div className="w-32 h-32 bg-gradient-to-br from-sky-100 to-sky-200 rounded-2xl flex items-center justify-center">
-                <FileSpreadsheet className="h-16 w-16 text-sky-600" />
+              <div className="w-32 h-32 bg-gradient-to-br from-teal-100 to-teal-200 dark:from-teal-800/30 dark:to-teal-700/30 rounded-2xl flex items-center justify-center">
+                <FileSpreadsheet className="h-16 w-16 text-[rgb(0,173,181)]" />
               </div>
             </div>
           </div>
         </div>
 
         {/* File Upload */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 mb-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Upload Filled Template</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-8 mb-8">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Upload Filled Template</h2>
 
           <div
             className={`relative border-2 border-dashed rounded-2xl p-12 text-center transition-all ${
               dragActive
-                ? 'border-sky-500 bg-sky-50'
-                : 'border-gray-300 hover:border-gray-400'
+                ? 'border-[rgb(0,173,181)] bg-teal-50 dark:bg-teal-900/30'
+                : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
             }`}
             onDragEnter={handleDrag}
             onDragLeave={handleDrag}
@@ -288,11 +276,11 @@ export default function InventoryBulkUploadPage() {
 
             {file ? (
               <div className="space-y-4">
-                <div className="inline-flex items-center gap-3 bg-sky-50 border border-sky-200 rounded-xl px-6 py-4">
-                  <FileSpreadsheet className="h-8 w-8 text-sky-600" />
+                <div className="inline-flex items-center gap-3 bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-700 rounded-xl px-6 py-4">
+                  <FileSpreadsheet className="h-8 w-8 text-[rgb(0,173,181)]" />
                   <div className="text-left">
-                    <p className="font-semibold text-gray-900">{file.name}</p>
-                    <p className="text-sm text-gray-600">
+                    <p className="font-semibold text-gray-900 dark:text-white">{file.name}</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
                       {(file.size / 1024).toFixed(2)} KB
                     </p>
                   </div>
@@ -301,14 +289,14 @@ export default function InventoryBulkUploadPage() {
                 <div className="flex items-center justify-center gap-4">
                   <button
                     onClick={() => setFile(null)}
-                    className="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-all"
+                    className="px-6 py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium rounded-xl transition-all"
                   >
                     Remove File
                   </button>
                   <button
                     onClick={handleUpload}
                     disabled={uploading}
-                    className="flex items-center gap-3 bg-sky-600 hover:bg-sky-700 text-white font-semibold px-8 py-3 rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-sky-600"
+                    className="flex items-center gap-3 bg-[rgb(0,173,181)] hover:bg-[rgb(0,173,181)]/90 text-white font-semibold px-8 py-3 rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[rgb(0,173,181)]"
                   >
                     {uploading ? (
                       <>
@@ -327,18 +315,18 @@ export default function InventoryBulkUploadPage() {
             ) : (
               <>
                 <Upload className="mx-auto h-16 w-16 text-gray-400 mb-4" />
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
                   Drop your Excel file here
                 </h3>
-                <p className="text-gray-600 mb-6">or</p>
+                <p className="text-gray-600 dark:text-gray-400 mb-6">or</p>
                 <label
                   htmlFor="file-upload"
-                  className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium px-6 py-3 rounded-xl cursor-pointer transition-all"
+                  className="inline-flex items-center gap-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium px-6 py-3 rounded-xl cursor-pointer transition-all"
                 >
                   <FileSpreadsheet className="h-5 w-5" />
                   Browse Files
                 </label>
-                <p className="mt-4 text-sm text-gray-500">
+                <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
                   Supports: .xlsx, .xls (Max 5MB)
                 </p>
               </>
@@ -348,48 +336,58 @@ export default function InventoryBulkUploadPage() {
 
         {/* Upload Results */}
         {uploadResult && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Upload Results</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-8">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Upload Results</h2>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-              <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-6 border border-gray-200 dark:border-gray-600">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-600">Total Rows</span>
-                  <Package className="h-5 w-5 text-gray-400" />
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Rows</span>
+                  <UtensilsCrossed className="h-5 w-5 text-gray-400" />
                 </div>
-                <p className="text-3xl font-bold text-gray-900">{uploadResult.total}</p>
+                <p className="text-3xl font-bold text-gray-900 dark:text-white">{uploadResult.total}</p>
               </div>
 
-              <div className="bg-emerald-50 rounded-xl p-6 border border-emerald-200">
+              <div className="bg-emerald-50 dark:bg-emerald-900/30 rounded-xl p-6 border border-emerald-200 dark:border-emerald-700">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-emerald-600">Successful</span>
-                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                  <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">Successful</span>
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                 </div>
-                <p className="text-3xl font-bold text-emerald-600">{uploadResult.successCount}</p>
+                <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{uploadResult.successCount}</p>
               </div>
 
-              <div className="bg-red-50 rounded-xl p-6 border border-red-200">
+              <div className="bg-blue-50 dark:bg-blue-900/30 rounded-xl p-6 border border-blue-200 dark:border-blue-700">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-red-600">Failed</span>
-                  <XCircle className="h-5 w-5 text-red-600" />
+                  <span className="text-sm font-medium text-blue-600 dark:text-blue-400">Categories</span>
+                  <Layers className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                 </div>
-                <p className="text-3xl font-bold text-red-600">{uploadResult.errorCount}</p>
+                <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{uploadResult.categoriesCreated}</p>
+              </div>
+
+              <div className="bg-red-50 dark:bg-red-900/30 rounded-xl p-6 border border-red-200 dark:border-red-700">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-red-600 dark:text-red-400">Failed</span>
+                  <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                </div>
+                <p className="text-3xl font-bold text-red-600 dark:text-red-400">{uploadResult.errorCount}</p>
               </div>
             </div>
 
             {/* Success Message */}
             {uploadResult.successCount > 0 && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6 mb-6">
+              <div className="bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700 rounded-xl p-6 mb-6">
                 <div className="flex gap-3">
-                  <CheckCircle2 className="h-6 w-6 text-emerald-600 flex-shrink-0" />
+                  <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
                   <div>
-                    <h3 className="font-semibold text-emerald-900 mb-1">
-                      {uploadResult.successCount} inventory item{uploadResult.successCount > 1 ? 's' : ''} created successfully!
+                    <h3 className="font-semibold text-emerald-900 dark:text-emerald-100 mb-1">
+                      {uploadResult.successCount} menu item{uploadResult.successCount > 1 ? 's' : ''} created successfully!
                     </h3>
-                    <p className="text-sm text-emerald-800">
+                    <p className="text-sm text-emerald-800 dark:text-emerald-200">
+                      {uploadResult.categoriesCreated > 0 && `${uploadResult.categoriesCreated} new categories created. `}
+                      {uploadResult.subCategoriesCreated > 0 && `${uploadResult.subCategoriesCreated} new sub-categories created. `}
                       {uploadResult.errorCount === 0 
-                        ? 'Redirecting to inventory page...'
+                        ? 'Redirecting to menu page...'
                         : 'Please review errors below and fix them.'}
                     </p>
                   </div>
@@ -399,26 +397,26 @@ export default function InventoryBulkUploadPage() {
 
             {/* Error List */}
             {uploadResult.errorCount > 0 && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+              <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-xl p-6">
                 <div className="flex items-center gap-3 mb-4">
-                  <AlertCircle className="h-6 w-6 text-red-600" />
-                  <h3 className="font-semibold text-red-900">
+                  <AlertCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
+                  <h3 className="font-semibold text-red-900 dark:text-red-100">
                     {uploadResult.errorCount} row{uploadResult.errorCount > 1 ? 's' : ''} failed
                   </h3>
                 </div>
 
                 <div className="space-y-3 max-h-96 overflow-y-auto">
                   {uploadResult.errors.map((error, index) => (
-                    <div key={index} className="bg-white rounded-lg p-4 border border-red-200">
+                    <div key={index} className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-red-200 dark:border-red-700">
                       <div className="flex items-start gap-3">
-                        <div className="flex-shrink-0 w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
-                          <span className="text-sm font-bold text-red-600">{error.row}</span>
+                        <div className="flex-shrink-0 w-8 h-8 bg-red-100 dark:bg-red-900/50 rounded-full flex items-center justify-center">
+                          <span className="text-sm font-bold text-red-600 dark:text-red-400">{error.row}</span>
                         </div>
                         <div className="flex-1">
-                          <p className="font-medium text-gray-900 mb-1">
-                            Row {error.row}: {error.itemName}
+                          <p className="font-medium text-gray-900 dark:text-white mb-1">
+                            Row {error.row}: {error.itemName} ({error.category})
                           </p>
-                          <ul className="list-disc list-inside space-y-1 text-sm text-red-800">
+                          <ul className="list-disc list-inside space-y-1 text-sm text-red-800 dark:text-red-200">
                             {error.errors.map((err, errIndex) => (
                               <li key={errIndex}>{err}</li>
                             ))}
@@ -438,17 +436,17 @@ export default function InventoryBulkUploadPage() {
                   setFile(null);
                   setUploadResult(null);
                 }}
-                className="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-all"
+                className="px-6 py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium rounded-xl transition-all"
               >
                 Upload Another File
               </button>
 
               {uploadResult.successCount > 0 && (
                 <button
-                  onClick={() => router.push('/hotel-admin/inventory')}
-                  className="flex items-center gap-2 px-6 py-3 bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-xl transition-all"
+                  onClick={() => router.push('/hotel-admin/pos/menu')}
+                  className="flex items-center gap-2 px-6 py-3 bg-[rgb(0,173,181)] hover:bg-[rgb(0,173,181)]/90 text-white font-semibold rounded-xl transition-all"
                 >
-                  View Inventory
+                  View Menu
                   <TrendingUp className="h-5 w-5" />
                 </button>
               )}

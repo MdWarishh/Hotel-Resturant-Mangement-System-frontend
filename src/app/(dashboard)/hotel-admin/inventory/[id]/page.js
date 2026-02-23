@@ -105,7 +105,7 @@ export default function InventoryViewPage() {
 
         {/* ITEM INFO GRID */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
-          <InfoCard label="Category" value={item.category?.charAt(0).toUpperCase() + item.category?.slice(1) || '—'} icon="folder" />
+          <InfoCard label="Category" value={item.category ? (item.category.charAt(0).toUpperCase() + item.category.slice(1)) : '—'}   icon="folder" />
           <InfoCard label="Unit" value={item.unit?.toUpperCase() || '—'} icon="scale" />
           <InfoCard 
             label="Current Stock" 
@@ -122,7 +122,7 @@ export default function InventoryViewPage() {
             highlight={item.isActive ? 'active' : 'inactive'}
           />
           <InfoCard label="Created At" value={new Date(item.createdAt).toLocaleString()} icon="calendar" />
-          <InfoCard label="Created By" value={item.createdBy?.name || '—'} icon="user" />
+          <InfoCard label="Created By" value={item.createdBy?.name || 'System'} icon="user" />
         </div>
 
         {/* TRANSACTIONS TABLE */}

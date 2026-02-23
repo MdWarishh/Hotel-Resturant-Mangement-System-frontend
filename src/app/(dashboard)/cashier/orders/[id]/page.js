@@ -60,9 +60,177 @@ function OrderDetailContent() {
     router.push('/cashier/orders') // back to running orders
   }
 
-  const handlePrintBill = () => {
-    if (!order?._id) return
-    window.open(`/api/pos/orders/${order._id}/invoice/pdf`, '_blank')
+ const handlePrintBill = () => {
+    if (!order) return
+
+    const hotelName = order.hotel?.name || 'Hotel'
+    const hotelAddress = order.hotel?.address
+      ? `${order.hotel.address.street || ''}, ${order.hotel.address.city || ''}, ${order.hotel.address.state || ''} ${order.hotel.address.pincode || ''}`
+      : ''
+    const hotelPhone = order.hotel?.contact?.phone || ''
+    const hotelEmail = order.hotel?.contact?.email || ''
+    const orderDate = format(new Date(order.createdAt), 'dd/MM/yyyy')
+    const orderTime = format(new Date(order.createdAt), 'hh:mm a')
+    const locationText = order.tableNumber
+      ? `Table No: ${order.tableNumber}`
+      : order.room?.roomNumber
+      ? `Room No: ${order.room.roomNumber}`
+      : 'Takeaway'
+
+    const itemsHTML = order.items?.map((item) => `
+      <tr>
+        <td style="padding:10px 12px;font-size:13px;color:#111;border-bottom:1px solid #e5e5e5;">
+          ${item.name}${item.variant ? ` <span style="color:#888;font-size:11px;">(${item.variant})</span>` : ''}
+          ${item.specialInstructions ? `<div style="font-size:11px;color:#aaa;margin-top:2px;">${item.specialInstructions}</div>` : ''}
+        </td>
+        <td style="padding:10px 8px;text-align:center;font-size:13px;color:#111;border-bottom:1px solid #e5e5e5;">${item.quantity}</td>
+        <td style="padding:10px 8px;text-align:right;font-size:13px;color:#111;border-bottom:1px solid #e5e5e5;">&#8377;${Number(item.price).toLocaleString('en-IN')}</td>
+        <td style="padding:10px 12px;text-align:right;font-size:13px;font-weight:700;color:#111;border-bottom:1px solid #e5e5e5;">&#8377;${(item.quantity * item.price).toLocaleString('en-IN')}</td>
+      </tr>
+    `).join('')
+
+    const subtotal = order.pricing?.subtotal || 0
+    const tax = order.pricing?.tax || 0
+    const discount = order.pricing?.discount || 0
+    const total = order.pricing?.total || 0
+    const paymentMode = order.payment?.mode || 'N/A'
+    const paymentStatus = order.payment?.status || 'UNPAID'
+    const paidColor = paymentStatus === 'PAID' ? '#065f46' : '#991b1b'
+    const paidBg = paymentStatus === 'PAID' ? '#d1fae5' : '#fee2e2'
+
+    const invoiceHTML = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<title>Invoice - ${order.orderNumber || order._id.slice(-6)}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: 'Times New Roman', Georgia, serif; background:#fff; color:#111; padding:40px; max-width:820px; margin:0 auto; }
+
+  /* ── HEADER ── */
+  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:28px; padding-bottom:20px; border-bottom:3px solid #111; }
+  .hotel-info h1 { font-size:22px; font-weight:900; color:#111; letter-spacing:1px; text-transform:uppercase; margin-bottom:6px; }
+  .hotel-info p { font-size:12px; color:#444; line-height:1.7; }
+  .invoice-title { text-align:right; }
+  .invoice-title h2 { font-size:36px; font-weight:900; color:#c0392b; letter-spacing:2px; font-style:italic; }
+  .invoice-title .num { font-size:14px; color:#111; font-weight:700; margin-top:4px; letter-spacing:1px; }
+
+  /* ── INFO SECTION ── */
+  .info-section { display:flex; justify-content:space-between; gap:24px; margin-bottom:28px; }
+  .bill-to, .order-info { flex:1; border:1.5px solid #111; padding:14px 16px; }
+  .section-label { font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:2px; color:#c0392b; margin-bottom:10px; padding-bottom:6px; border-bottom:2px solid #c0392b; }
+  .info-row { display:flex; gap:8px; margin-bottom:5px; font-size:12.5px; }
+  .info-label { color:#666; font-weight:500; min-width:90px; }
+  .info-value { color:#111; font-weight:700; }
+  .badge { display:inline-block; padding:2px 10px; border-radius:2px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; background:${paidBg}; color:${paidColor}; border:1px solid ${paidColor}; }
+
+  /* ── TABLE ── */
+  table { width:100%; border-collapse:collapse; margin-bottom:20px; border:1.5px solid #111; }
+  thead tr { background:#111; }
+  thead th { padding:11px 12px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:1px; color:#fff; text-align:left; }
+  thead th:not(:first-child) { text-align:right; }
+  thead th:nth-child(2) { text-align:center; }
+  tbody tr:nth-child(even) { background:#f7f7f7; }
+  tbody tr:hover { background:#fff0f0; }
+
+  /* ── TOTALS ── */
+  .totals-section { display:flex; justify-content:flex-end; margin-bottom:28px; }
+  .totals-box { width:280px; border:1.5px solid #111; }
+  .totals-row { display:flex; justify-content:space-between; padding:9px 14px; font-size:13px; border-bottom:1px solid #ddd; }
+  .totals-row:last-child { border-bottom:none; }
+  .totals-row .lbl { color:#555; }
+  .totals-row .val { font-weight:700; color:#111; }
+  .grand { background:#111; padding:13px 14px; }
+  .grand .lbl { color:#fff; font-size:14px; font-weight:800; }
+  .grand .val { color:#c0392b; font-size:16px; font-weight:900; }
+
+  /* ── AMOUNT IN WORDS ── */
+  .words-row { margin-bottom:20px; padding:10px 14px; border:1.5px solid #111; font-size:12px; font-style:italic; font-weight:700; color:#111; text-transform:uppercase; letter-spacing:0.5px; }
+
+  /* ── FOOTER ── */
+  .footer { text-align:center; margin-top:32px; padding-top:16px; border-top:3px double #111; }
+  .footer .ty { font-size:15px; font-weight:900; color:#c0392b; margin-bottom:4px; text-transform:uppercase; letter-spacing:2px; }
+  .footer p { font-size:11px; color:#666; line-height:1.8; }
+
+  @media print {
+    body { padding:20px; }
+    @page { margin:0.5cm; size:A4; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="hotel-info">
+    <h1>${hotelName}</h1>
+    ${hotelAddress ? `<p>${hotelAddress}</p>` : ''}
+    ${hotelPhone ? `<p>Phone: ${hotelPhone}</p>` : ''}
+    ${hotelEmail ? `<p>Email: ${hotelEmail}</p>` : ''}
+  </div>
+  <div class="invoice-title">
+    <h2>Invoice</h2>
+    <div class="num"># ${order.orderNumber || order._id.slice(-6)}</div>
+  </div>
+</div>
+
+<!-- INFO SECTION -->
+<div class="info-section">
+  <div class="bill-to">
+    <div class="section-label">Order Details</div>
+    <div class="info-row"><span class="info-label">Order No</span><span class="info-value">${order.orderNumber || order._id.slice(-6)}</span></div>
+    <div class="info-row"><span class="info-label">Type</span><span class="info-value">${(order.orderType || 'N/A').toUpperCase()}</span></div>
+    <div class="info-row"><span class="info-label">Location</span><span class="info-value">${locationText}</span></div>
+    ${order.customer?.name ? `<div class="info-row"><span class="info-label">Customer</span><span class="info-value">${order.customer.name}</span></div>` : ''}
+    ${order.customer?.phone ? `<div class="info-row"><span class="info-label">Phone</span><span class="info-value">${order.customer.phone}</span></div>` : ''}
+  </div>
+  <div class="order-info">
+    <div class="section-label">Invoice Info</div>
+    <div class="info-row"><span class="info-label">Date</span><span class="info-value">${orderDate}</span></div>
+    <div class="info-row"><span class="info-label">Time</span><span class="info-value">${orderTime}</span></div>
+    <div class="info-row"><span class="info-label">Status</span><span class="info-value">${(order.status || '').toUpperCase()}</span></div>
+    <div class="info-row"><span class="info-label">Payment</span><span class="badge">${paymentStatus}</span></div>
+    <div class="info-row"><span class="info-label">Mode</span><span class="info-value">${paymentMode}</span></div>
+  </div>
+</div>
+
+<!-- ITEMS TABLE -->
+<table>
+  <thead>
+    <tr>
+      <th>Description</th>
+      <th style="text-align:center;">Qty</th>
+      <th style="text-align:right;">Unit Price</th>
+      <th style="text-align:right;">Amount</th>
+    </tr>
+  </thead>
+  <tbody>${itemsHTML}</tbody>
+</table>
+
+<!-- TOTALS -->
+<div class="totals-section">
+  <div class="totals-box">
+    <div class="totals-row"><span class="lbl">Subtotal</span><span class="val">&#8377;${subtotal.toLocaleString('en-IN')}</span></div>
+    ${discount > 0 ? `<div class="totals-row"><span class="lbl">Discount</span><span class="val" style="color:#c0392b;">- &#8377;${discount.toLocaleString('en-IN')}</span></div>` : ''}
+    <div class="totals-row"><span class="lbl">GST (5%)</span><span class="val">&#8377;${tax.toLocaleString('en-IN')}</span></div>
+    <div class="totals-row grand"><span class="lbl">Grand Total</span><span class="val">&#8377;${total.toLocaleString('en-IN')}</span></div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <p class="ty">Thank you for visiting us!</p>
+  <p>This is a computer-generated invoice and does not require a signature.</p>
+  ${hotelPhone || hotelEmail ? `<p>For queries: ${hotelPhone ? 'Ph: ' + hotelPhone : ''} ${hotelEmail ? '| ' + hotelEmail : ''}</p>` : ''}
+</div>
+
+<script>window.onload=function(){window.print();}</script>
+</body>
+</html>`
+
+    const w = window.open('', '_blank', 'width=900,height=700')
+    w.document.write(invoiceHTML)
+    w.document.close()
   }
 
   const getStatusBadge = (status) => {
@@ -144,15 +312,7 @@ function OrderDetailContent() {
                 <span className="text-sm sm:text-base">Print</span>
               </button>
 
-              {!['paid', 'settled'].includes(order.status) && (
-                <button
-                  onClick={() => setShowPayment(true)}
-                  className="flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex-1 sm:flex-initial"
-                >
-                  <DollarSign className="h-4 w-4 sm:h-5 sm:w-5" />
-                  <span className="text-sm sm:text-base">Pay</span>
-                </button>
-              )}
+            
             </div>
           </div>
         </div>

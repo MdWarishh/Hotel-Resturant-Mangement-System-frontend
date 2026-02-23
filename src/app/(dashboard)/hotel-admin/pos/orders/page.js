@@ -10,6 +10,7 @@ import { Loader2, AlertCircle, Eye, CheckCircle, XCircle, Download, Calendar, Re
 import { format } from 'date-fns'
 import Link from 'next/link'
 
+
 export default function POSOrdersPage() {
   const { user } = useAuth()
   const router = useRouter()
