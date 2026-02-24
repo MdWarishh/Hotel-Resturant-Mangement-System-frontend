@@ -8,7 +8,8 @@ import {
   UserPlus, Loader2, Search, RefreshCw, X, 
   ChevronLeft, ChevronRight, 
   Users,
-  Edit
+  Edit,
+  Trash2
 } from 'lucide-react';
 
 export default function StaffListPage() {
@@ -59,6 +60,21 @@ export default function StaffListPage() {
     const timer = setTimeout(fetchStaff, 500);
     return () => clearTimeout(timer);
   }, [searchTerm]);
+
+  const handleDelete = async (id, name) => {
+    if (!window.confirm(`Are you sure you want to permanently delete "${name}"?\nThis action cannot be undone.`)) return
+
+    setActionLoading(id)
+    try {
+      await apiRequest(`/users/${id}`, { method: 'DELETE' })
+      await fetchStaff()
+    } catch (err) {
+      console.error('Delete failed:', err)
+      alert('Failed to deactivate staff member. Please try again.')
+    } finally {
+      setActionLoading(null)
+    }
+  }
 
   const clearFilters = () => {
     setSearchTerm('');
@@ -228,13 +244,26 @@ export default function StaffListPage() {
                       <StatusBadge status={s.status} />
                     </td>
                     <td className="px-8 py-6 text-right">
-                      <Link
-                        href={`/hotel-admin/staff/${s._id}/edit`}
-                        className="inline-flex items-center gap-2 bg-teal-600 text-white px-6 py-2.5 rounded-2xl text-sm font-medium hover:bg-teal-700 transition-all"
-                      >
-                        <Edit className="h-4 w-4" />
-                        Edit
-                      </Link>
+                      <div className="flex items-center justify-end gap-2">
+                        <Link
+                          href={`/hotel-admin/staff/${s._id}/edit`}
+                          className="inline-flex items-center gap-2 bg-teal-600 text-white px-4 py-2.5 rounded-2xl text-sm font-medium hover:bg-teal-700 transition-all"
+                        >
+                          <Edit className="h-4 w-4" />
+                          Edit
+                        </Link>
+                        <button
+                          onClick={() => handleDelete(s._id, s.name)}
+                          disabled={actionLoading === s._id}
+                          className="inline-flex items-center gap-2 bg-red-50 text-red-600 border border-red-200 px-4 py-2.5 rounded-2xl text-sm font-medium hover:bg-red-100 disabled:opacity-40 transition-all"
+                        >
+                          {actionLoading === s._id
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <Trash2 className="h-4 w-4" />
+                          }
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

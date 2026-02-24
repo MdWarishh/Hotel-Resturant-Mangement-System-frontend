@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { apiRequest } from '@/services/api';
-import { Users, UserPlus, Edit, Loader2, Trash2, AlertCircle, Search } from 'lucide-react';
+import { Users, UserPlus, Edit, Loader2, Trash2, AlertCircle, AlertTriangle, Search } from 'lucide-react';
 
 export default function UsersPage() {
   const [users, setUsers] = useState([]);
@@ -61,18 +61,17 @@ export default function UsersPage() {
     setFilteredUsers(filtered);
   };
 
-  const handleDelete = async (userId) => {
-    if (!confirm('Are you sure? This will delete the user.')) return;
+  const handleDelete = async (userId, userName) => {
+    if (!confirm(`Are you sure you want to permanently delete "${userName}"?\nThis action cannot be undone.`)) return;
 
     setDeletingId(userId);
     try {
       await apiRequest(`/users/${userId}`, { method: 'DELETE' });
-      // Refresh list
       const updatedUsers = users.filter(u => u._id !== userId);
       setUsers(updatedUsers);
-      applyFilters(updatedUsers);
     } catch (err) {
-      alert('Failed to delete user');
+      console.error('Delete failed:', err);
+      alert('Failed to delete user. Please try again.');
     } finally {
       setDeletingId(null);
     }
@@ -222,7 +221,7 @@ export default function UsersPage() {
                         Edit
                       </Link>
                       <button
-                        onClick={() => handleDelete(user._id)}
+                        onClick={() => handleDelete(user._id, user.name)}
                         disabled={deletingId === user._id}
                         className="inline-flex items-center gap-2 px-4 py-2 bg-[#ff6b6b]/5 text-[#ff6b6b] rounded-lg font-medium hover:bg-[#ff6b6b]/20 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#ff6b6b]/40 ml-2 disabled:opacity-50"
                       >

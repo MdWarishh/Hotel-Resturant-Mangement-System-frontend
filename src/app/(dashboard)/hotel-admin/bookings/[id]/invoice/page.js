@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiRequest } from '@/services/api';
-import { Loader2 } from 'lucide-react';
+import { Printer, Loader2, Download, Mail, Phone, MapPin, Building2, Calendar } from 'lucide-react';
 
 export default function InvoicePage() {
   const { id } = useParams();
@@ -17,21 +17,26 @@ export default function InvoicePage() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  const handleDownloadPDF = () => {
+    window.print();
+  };
+
   if (loading) {
     return (
-      <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center' }}>
-        <Loader2 style={{ width: 40, height: 40, color: '#0d9488' }} className="animate-spin" />
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-10 w-10 animate-spin text-teal-600" />
       </div>
     );
   }
 
   if (!booking) {
-    return <div style={{ textAlign: 'center', padding: '80px', color: '#dc2626' }}>Invoice not found</div>;
+    return <div className="text-center py-20 text-red-600">Invoice not found</div>;
   }
 
+  // Calculate duration
   const isHourly = booking.bookingType === 'hourly';
-  const duration = isHourly
-    ? booking.hours
+  const duration = isHourly 
+    ? booking.hours 
     : Math.ceil((new Date(booking.dates.checkOut) - new Date(booking.dates.checkIn)) / 86400000);
 
   const subtotal = booking.pricing?.roomCharges || 0;
@@ -41,594 +46,361 @@ export default function InvoicePage() {
   const paid = booking.advancePayment || 0;
   const due = total - paid;
 
-  const fmt = (n) => `₹${Number(n).toLocaleString('en-IN')}`;
-  const fmtDate = (d) => new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  // Generate Invoice Number
+  const getInvoiceNumber = () => {
+    if (booking.invoiceNumber) {
+      return booking.invoiceNumber;
+    }
+    const bookingNum = booking.bookingNumber.replace(/[^0-9]/g, '');
+    const invoiceNum = parseInt(bookingNum) || 1;
+    return `INV-${invoiceNum.toString().padStart(4, '0')}`;
+  };
 
-  const contact = booking.hotel?.contact || {};
+  const invoiceNumber = getInvoiceNumber();
+  const formatCurrency = (amount) => `₹${amount.toLocaleString('en-IN')}`;
 
   return (
-    <>
-      <style>{`
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { background: #f3f4f6; font-family: 'Segoe UI', Arial, sans-serif; }
-
-        .page-wrapper {
-          min-height: 100vh;
-          background: #f3f4f6;
-          padding: 32px 16px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-        }
-
-        .action-bar {
-          display: flex;
-          gap: 12px;
-          margin-bottom: 20px;
-          justify-content: flex-end;
-          width: 100%;
-          max-width: 794px;
-        }
-
-        .btn {
-          padding: 10px 22px;
-          border-radius: 8px;
-          font-weight: 600;
-          font-size: 14px;
-          cursor: pointer;
-          border: none;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          transition: opacity 0.2s;
-        }
-        .btn:hover { opacity: 0.88; }
-        .btn-print { background: #0d9488; color: #fff; }
-        .btn-download { background: #2563eb; color: #fff; }
-
-        /* A4 invoice */
-        .invoice {
-          width: 794px;
-          background: #fff;
-          box-shadow: 0 4px 32px rgba(0,0,0,0.13);
-        }
-
-        /* HEADER */
-        .inv-header {
-          background: linear-gradient(135deg, #0f766e 0%, #0d9488 60%, #14b8a6 100%);
-          color: #fff;
-          padding: 36px 40px 28px;
-          position: relative;
-          overflow: hidden;
-        }
-        .inv-header::before {
-          content: '';
-          position: absolute;
-          top: -40px; right: -40px;
-          width: 200px; height: 200px;
-          background: rgba(255,255,255,0.06);
-          border-radius: 50%;
-        }
-        .inv-header::after {
-          content: '';
-          position: absolute;
-          bottom: -60px; left: 40px;
-          width: 160px; height: 160px;
-          background: rgba(255,255,255,0.04);
-          border-radius: 50%;
-        }
-        .inv-header-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 24px;
-          position: relative;
-          z-index: 1;
-        }
-        .inv-tag {
-          display: inline-block;
-          background: rgba(255,255,255,0.18);
-          border: 1px solid rgba(255,255,255,0.3);
-          border-radius: 20px;
-          padding: 3px 14px;
-          font-size: 11px;
-          font-weight: 600;
-          letter-spacing: 1px;
-          text-transform: uppercase;
-          margin-bottom: 8px;
-          color: #ccfbf1;
-        }
-        .inv-title {
-          font-size: 42px;
-          font-weight: 800;
-          letter-spacing: 3px;
-          line-height: 1;
-          margin-bottom: 8px;
-        }
-        .inv-number {
-          font-family: monospace;
-          font-size: 15px;
-          font-weight: 600;
-          color: #99f6e4;
-          margin-bottom: 14px;
-        }
-        .inv-date-row {
-          font-size: 12px;
-          color: #ccfbf1;
-        }
-
-        .hotel-side {
-          text-align: right;
-        }
-        .hotel-name {
-          font-size: 22px;
-          font-weight: 700;
-          margin-bottom: 10px;
-          line-height: 1.2;
-        }
-        .hotel-detail {
-          font-size: 12px;
-          color: #ccfbf1;
-          margin-bottom: 5px;
-          display: flex;
-          align-items: flex-start;
-          justify-content: flex-end;
-          gap: 6px;
-          line-height: 1.4;
-        }
-
-        /* STATUS STRIP */
-        .status-strip {
-          background: #f0fdf4;
-          border-top: 3px solid #10b981;
-          display: flex;
-          align-items: center;
-          justify-content: flex-end;
-          padding: 8px 40px;
-          gap: 8px;
-        }
-        .status-badge {
-          padding: 4px 16px;
-          border-radius: 20px;
-          font-size: 12px;
-          font-weight: 700;
-          letter-spacing: 0.5px;
-          text-transform: uppercase;
-        }
-        .badge-paid { background: #dcfce7; color: #15803d; }
-        .badge-partial { background: #fef3c7; color: #b45309; }
-        .badge-unpaid { background: #fee2e2; color: #b91c1c; }
-
-        /* BODY */
-        .inv-body {
-          padding: 28px 40px;
-        }
-
-        /* 2-col info */
-        .info-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 16px;
-          margin-bottom: 24px;
-        }
-        .info-card {
-          border: 1px solid #e5e7eb;
-          border-radius: 10px;
-          padding: 16px 18px;
-          background: #fafafa;
-        }
-        .info-card-label {
-          font-size: 10px;
-          font-weight: 700;
-          color: #9ca3af;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-          margin-bottom: 10px;
-          padding-bottom: 8px;
-          border-bottom: 1px solid #e5e7eb;
-        }
-        .guest-name {
-          font-size: 18px;
-          font-weight: 700;
-          color: #111827;
-          margin-bottom: 6px;
-        }
-        .info-row {
-          display: flex;
-          align-items: center;
-          gap: 7px;
-          font-size: 13px;
-          color: #374151;
-          margin-bottom: 4px;
-        }
-        .info-icon {
-          width: 14px;
-          height: 14px;
-          color: #6b7280;
-          flex-shrink: 0;
-        }
-        .id-proof {
-          margin-top: 10px;
-          padding-top: 10px;
-          border-top: 1px dashed #e5e7eb;
-          font-size: 11px;
-          color: #6b7280;
-        }
-
-        .booking-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          font-size: 13px;
-          padding: 5px 0;
-          border-bottom: 1px dotted #f3f4f6;
-        }
-        .booking-row:last-child { border-bottom: none; }
-        .booking-row-label { color: #6b7280; }
-        .booking-row-value { font-weight: 600; color: #111827; }
-        .booking-row-duration { color: #0d9488; font-weight: 700; }
-
-        /* TABLE */
-        .section-title {
-          font-size: 13px;
-          font-weight: 700;
-          color: #374151;
-          text-transform: uppercase;
-          letter-spacing: 0.8px;
-          margin-bottom: 10px;
-          padding-bottom: 6px;
-          border-bottom: 2px solid #0d9488;
-          display: inline-block;
-        }
-        .charges-table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 13px;
-          margin-bottom: 20px;
-        }
-        .charges-table thead tr {
-          background: #f0fdfa;
-          border-bottom: 2px solid #0d9488;
-        }
-        .charges-table th {
-          padding: 10px 12px;
-          text-align: left;
-          font-size: 11px;
-          font-weight: 700;
-          color: #0f766e;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-        }
-        .charges-table th:last-child,
-        .charges-table td:last-child { text-align: right; }
-        .charges-table th:nth-child(2),
-        .charges-table td:nth-child(2),
-        .charges-table th:nth-child(3),
-        .charges-table td:nth-child(3) { text-align: center; }
-        .charges-table tbody tr { border-bottom: 1px solid #f3f4f6; }
-        .charges-table tbody tr:hover { background: #f9fafb; }
-        .charges-table td {
-          padding: 10px 12px;
-          color: #374151;
-          vertical-align: middle;
-        }
-        .row-main { font-weight: 600; color: #111827; font-size: 13px; }
-        .row-sub { font-size: 11px; color: #9ca3af; margin-top: 2px; }
-        .extra-label { color: #0f766e; font-weight: 600; }
-        .total-row {
-          background: linear-gradient(90deg, #f0fdfa, #ccfbf1);
-          font-weight: 700;
-        }
-        .total-row td {
-          padding: 14px 12px;
-          font-size: 14px;
-          color: #0f766e;
-          border-top: 2px solid #0d9488;
-        }
-        .total-amount { font-size: 20px; font-weight: 800; color: #0f766e; }
-
-        /* PAYMENT SUMMARY */
-        .payment-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr 1fr;
-          gap: 12px;
-          margin-bottom: 20px;
-          background: #f0fdfa;
-          border: 1px solid #99f6e4;
-          border-radius: 10px;
-          padding: 16px;
-        }
-        .pay-card {
-          text-align: center;
-        }
-        .pay-card + .pay-card {
-          border-left: 1px solid #99f6e4;
-        }
-        .pay-label {
-          font-size: 10px;
-          font-weight: 700;
-          color: #6b7280;
-          text-transform: uppercase;
-          letter-spacing: 0.7px;
-          margin-bottom: 4px;
-        }
-        .pay-value { font-size: 20px; font-weight: 800; }
-        .pay-total { color: #0f766e; }
-        .pay-paid { color: #15803d; }
-        .pay-due-green { color: #15803d; }
-        .pay-due-orange { color: #b45309; }
-
-        /* TERMS */
-        .terms {
-          background: #f9fafb;
-          border: 1px solid #e5e7eb;
-          border-radius: 8px;
-          padding: 14px 18px;
-          margin-bottom: 0;
-        }
-        .terms-title {
-          font-size: 11px;
-          font-weight: 700;
-          color: #374151;
-          text-transform: uppercase;
-          letter-spacing: 0.6px;
-          margin-bottom: 8px;
-        }
-        .terms-list {
-          list-style: none;
-          font-size: 11px;
-          color: #6b7280;
-          line-height: 1.8;
-        }
-        .terms-list li::before { content: '✦ '; color: #0d9488; }
-
-        /* FOOTER */
-        .inv-footer {
-          background: linear-gradient(135deg, #0f766e, #0d9488);
-          color: #fff;
-          text-align: center;
-          padding: 18px 40px;
-        }
-        .inv-footer p { font-size: 12px; color: #ccfbf1; margin-top: 4px; }
-        .inv-footer .thank-you {
-          font-size: 15px;
-          font-weight: 600;
-          color: #fff;
-          margin-bottom: 2px;
-        }
-
-        /* Divider line */
-        .divider {
-          height: 1px;
-          background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
-          margin: 20px 0;
-        }
-
-        @media print {
-          html, body { background: #fff !important; }
-          .page-wrapper { background: #fff !important; padding: 0 !important; }
-          .action-bar { display: none !important; }
-          .invoice {
-            box-shadow: none !important;
-            width: 100% !important;
-            page-break-inside: avoid;
-          }
-          @page { size: A4; margin: 0; }
-        }
-      `}</style>
-
-      <div className="page-wrapper">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-8 px-4">
+      <div className="max-w-5xl mx-auto">
         {/* Action Buttons */}
-        <div className="action-bar">
-          <button className="btn btn-download" onClick={() => window.print()}>
-            ⬇ Download PDF
+        <div className="flex justify-end gap-3 mb-6 print:hidden">
+          <button
+            onClick={handleDownloadPDF}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-semibold shadow-lg transition-all hover:scale-105"
+          >
+            <Download className="h-5 w-5" />
+            Download PDF
           </button>
-          <button className="btn btn-print" onClick={() => window.print()}>
-            🖨 Print Invoice
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-xl font-semibold shadow-lg transition-all hover:scale-105"
+          >
+            <Printer className="h-5 w-5" />
+            Print Invoice
           </button>
         </div>
 
-        {/* INVOICE */}
-        <div className="invoice">
-
-          {/* HEADER */}
-          <div className="inv-header">
-            <div className="inv-header-grid">
-              {/* Left */}
-              <div>
-                <div className="inv-tag">Tax Invoice</div>
-                <div className="inv-title">INVOICE</div>
-                <div className="inv-number">#{booking.bookingNumber}</div>
-                <div className="inv-date-row">📅 Invoice Date: {today}</div>
+        {/* Invoice Container */}
+        <div className="bg-white shadow-2xl rounded-2xl overflow-hidden print:shadow-none print:rounded-none">
+          
+          {/* Header */}
+          <div className="relative bg-gradient-to-r from-teal-600 via-teal-700 to-teal-800 text-white px-10 py-12">
+            <div className="absolute inset-0 opacity-10">
+              <div className="absolute top-0 left-0 w-full h-full" 
+                   style={{backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,.05) 10px, rgba(255,255,255,.05) 20px)'}}>
               </div>
-              {/* Right */}
-              <div className="hotel-side">
-                <div className="hotel-name">{booking.hotel?.name}</div>
-                {booking.hotel?.address && (
-                  <div className="hotel-detail">
-                    <span>
-                      {booking.hotel.address.street}, {booking.hotel.address.city}<br />
-                      {booking.hotel.address.state} - {booking.hotel.address.zipCode}
-                    </span>
-                    <span>📍</span>
+            </div>
+            
+            <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Left - Invoice Info */}
+              <div>
+                <div className="inline-block bg-white/20 backdrop-blur-sm px-4 py-1 rounded-full text-teal-100 text-sm font-medium mb-4">
+                  Tax Invoice
+                </div>
+                <h1 className="text-5xl font-bold tracking-tight mb-3">INVOICE</h1>
+                <div className="flex items-center gap-2 text-teal-100 text-lg mb-2">
+                  <span className="font-mono font-semibold">#{invoiceNumber}</span>
+                </div>
+                <div className="flex items-center gap-2 text-teal-200 text-sm">
+                  <span>Booking: {booking.bookingNumber}</span>
+                </div>
+                <div className="mt-6 space-y-2 text-teal-100">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Calendar className="h-4 w-4" />
+                    <span>Invoice Date: {new Date().toLocaleDateString('en-IN', {day: '2-digit', month: 'short', year: 'numeric'})}</span>
                   </div>
-                )}
-                {contact.phone && (
-                  <div className="hotel-detail">
-                    <span>+91 {contact.phone}</span>
-                    <span>📞</span>
-                  </div>
-                )}
-                {contact.email && (
-                  <div className="hotel-detail">
-                    <span>{contact.email}</span>
-                    <span>✉</span>
-                  </div>
-                )}
+                </div>
+              </div>
+
+              {/* Right - Hotel Info */}
+              <div className="text-right">
+                <div className="flex items-center justify-end gap-3 mb-2">
+                  <Building2 className="h-8 w-8" />
+                  <h2 className="text-3xl font-bold">{booking.hotel?.name}</h2>
+                </div>
+                <div className="space-y-1.5 text-teal-100 text-sm">
+                  {booking.hotel?.address && (
+                    <div className="flex items-start justify-end gap-2">
+                      <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                      <span>
+                        {booking.hotel.address.street}, {booking.hotel.address.city}<br/>
+                        {booking.hotel.address.state} - {booking.hotel.address.zipCode}
+                      </span>
+                    </div>
+                  )}
+                 {booking.hotel?.contact?.phone && (
+  <div className="flex items-center justify-end gap-2">
+    <Phone className="h-4 w-4" />
+    <span>+91 {booking.hotel.contact.phone}</span>
+  </div>
+)}
+
+{booking.hotel?.contact?.email && (
+  <div className="flex items-center justify-end gap-2">
+    <Mail className="h-4 w-4" />
+    <span>{booking.hotel.contact.email}</span>
+  </div>
+)}
+
+{booking.hotel?.contact?.website && (
+  <div className="flex items-center justify-end gap-2">
+    <span>{booking.hotel.contact.website}</span>
+  </div>
+)}
+                  {booking.hotel?.email && (
+                    <div className="flex items-center justify-end gap-2">
+                      <Mail className="h-4 w-4" />
+                      <span>{booking.hotel.email}</span>
+                    </div>
+                  )}
+                  {booking.hotel?.gstNumber && (
+                    <div className="mt-3 pt-3 border-t border-teal-500/30">
+                      <div className="flex items-center justify-end gap-2">
+                        <span className="font-semibold">GSTIN:</span>
+                        <span className="font-mono">{booking.hotel.gstNumber}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
 
-          {/* STATUS STRIP */}
-          <div className="status-strip">
-            <span style={{ fontSize: 12, color: '#374151', fontWeight: 600 }}>Payment Status:</span>
-            <span className={`status-badge ${
-              booking.paymentStatus === 'paid' ? 'badge-paid' :
-              booking.paymentStatus === 'partial' ? 'badge-partial' : 'badge-unpaid'
-            }`}>
-              {booking.paymentStatus?.replace('_', ' ')}
-            </span>
-          </div>
-
-          {/* BODY */}
-          <div className="inv-body">
-
-            {/* Guest & Booking Info */}
-            <div className="info-grid">
-              {/* Bill To */}
-              <div className="info-card">
-                <div className="info-card-label">Billed To</div>
-                <div className="guest-name">{booking.guest?.name}</div>
-                {booking.guest?.phone && (
-                  <div className="info-row">
-                    <span className="info-icon">📞</span>
-                    <span>{booking.guest.phone}</span>
-                  </div>
-                )}
+          {/* Guest & Booking Details */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-10 bg-gray-50">
+            {/* Bill To */}
+            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                Billed To
+              </div>
+              <div className="space-y-2">
+                <div className="text-xl font-bold text-gray-900">{booking.guest?.name}</div>
+                <div className="flex items-center gap-2 text-gray-600">
+                  <Phone className="h-4 w-4" />
+                  <span>{booking.guest?.phone}</span>
+                </div>
                 {booking.guest?.email && (
-                  <div className="info-row">
-                    <span className="info-icon">✉</span>
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <Mail className="h-4 w-4" />
                     <span>{booking.guest.email}</span>
                   </div>
                 )}
                 {booking.guest?.idProof && (
-                  <div className="id-proof">
-                    <strong>ID:</strong> {booking.guest.idProof.type?.toUpperCase()} — {booking.guest.idProof.number}
+                  <div className="mt-3 pt-3 border-t text-xs text-gray-500">
+                    <span className="font-semibold">ID Proof:</span> {booking.guest.idProof.type.toUpperCase()} - {booking.guest.idProof.number}
                   </div>
                 )}
               </div>
+            </div>
 
-              {/* Booking Details */}
-              <div className="info-card">
-                <div className="info-card-label">Booking Details</div>
-                <div className="booking-row">
-                  <span className="booking-row-label">Booking Type</span>
-                  <span className="booking-row-value" style={{ textTransform: 'capitalize' }}>{booking.bookingType?.replace('-', ' ')}</span>
+            {/* Booking Details */}
+            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                Booking Details
+              </div>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 text-sm">Booking Type:</span>
+                  <span className="font-semibold text-gray-900 capitalize">
+                    {booking.bookingType === 'hourly' ? 'Hourly Stay' : 'Daily Stay'}
+                  </span>
                 </div>
-                <div className="booking-row">
-                  <span className="booking-row-label">Room</span>
-                  <span className="booking-row-value">{booking.room?.roomNumber} ({booking.room?.roomType})</span>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 text-sm">Room:</span>
+                  <span className="font-semibold text-gray-900">{booking.room?.roomNumber} ({booking.room?.roomType})</span>
                 </div>
-                <div className="booking-row">
-                  <span className="booking-row-label">Check-in</span>
-                  <span className="booking-row-value" style={{ fontSize: 12 }}>{fmtDate(booking.dates.checkIn)}</span>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 text-sm">Check-in:</span>
+                  <span className="font-semibold text-gray-900">
+                    {new Date(booking.dates.checkIn).toLocaleString('en-IN', {
+                      dateStyle: 'medium',
+                      timeStyle: 'short'
+                    })}
+                  </span>
                 </div>
-                <div className="booking-row">
-                  <span className="booking-row-label">Check-out</span>
-                  <span className="booking-row-value" style={{ fontSize: 12 }}>{fmtDate(booking.dates.checkOut)}</span>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 text-sm">Check-out:</span>
+                  <span className="font-semibold text-gray-900">
+                    {new Date(booking.dates.checkOut).toLocaleString('en-IN', {
+                      dateStyle: 'medium',
+                      timeStyle: 'short'
+                    })}
+                  </span>
                 </div>
-                <div className="booking-row" style={{ marginTop: 4 }}>
-                  <span className="booking-row-label">Duration</span>
-                  <span className="booking-row-duration">
+                <div className="flex justify-between items-center pt-2 border-t">
+                  <span className="text-gray-600 text-sm">Duration:</span>
+                  <span className="font-bold text-teal-700">
                     {duration} {isHourly ? (duration === 1 ? 'Hour' : 'Hours') : (duration === 1 ? 'Night' : 'Nights')}
                   </span>
                 </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 text-sm">Booking Source:</span>
+                  <span className="font-semibold text-gray-900">{booking.source}</span>
+                </div>
               </div>
             </div>
+          </div>
 
-            {/* Charges Table */}
-            <div className="section-title">Charge Details</div>
-            <table className="charges-table">
+          {/* Charges Table */}
+          <div className="px-10 py-8">
+            <h3 className="text-xl font-bold text-gray-900 mb-6">Charge Details</h3>
+            <table className="w-full">
               <thead>
-                <tr>
-                  <th>Description</th>
-                  <th>Qty</th>
-                  <th>Rate</th>
-                  <th>Amount</th>
+                <tr className="border-b-2 border-gray-200">
+                  <th className="text-left py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Description</th>
+                  <th className="text-center py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Qty</th>
+                  <th className="text-right py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Rate</th>
+                  <th className="text-right py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
                 </tr>
               </thead>
-              <tbody>
-                <tr>
-                  <td>
-                    <div className="row-main">{isHourly ? 'Hourly Room Charges' : 'Room Charges'}</div>
-                    <div className="row-sub">Room {booking.room?.roomNumber} — {booking.room?.roomType}</div>
+              <tbody className="divide-y divide-gray-100">
+                <tr className="hover:bg-gray-50 transition-colors">
+                  <td className="py-4">
+                    <div className="font-medium text-gray-900">
+                      {isHourly ? 'Hourly Room Charges' : 'Room Charges'}
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      Room {booking.room?.roomNumber} - {booking.room?.roomType}
+                    </div>
                   </td>
-                  <td style={{ textAlign: 'center' }}>{duration}</td>
-                  <td style={{ textAlign: 'center' }}>{fmt(Math.round(subtotal / duration))}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(subtotal)}</td>
+                  <td className="py-4 text-center font-medium text-gray-700">{duration}</td>
+                  <td className="py-4 text-right font-medium text-gray-700">
+                    {formatCurrency(Math.round(subtotal / duration))}
+                  </td>
+                  <td className="py-4 text-right font-semibold text-gray-900">{formatCurrency(subtotal)}</td>
                 </tr>
 
                 {extra > 0 && (
-                  <tr>
-                    <td>
-                      <div className="row-main extra-label">Extra Guest Charges</div>
-                      <div className="row-sub">Additional charges for extra guests</div>
+                  <tr className="hover:bg-gray-50 transition-colors">
+                    <td className="py-4">
+                      <div className="font-medium text-teal-700">Extra Guest Charges</div>
+                      <div className="text-sm text-gray-500">Additional charges for extra guests</div>
                     </td>
-                    <td style={{ textAlign: 'center', color: '#9ca3af' }}>—</td>
-                    <td style={{ textAlign: 'center', color: '#9ca3af' }}>—</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#0f766e' }}>{fmt(extra)}</td>
+                    <td className="py-4 text-center">-</td>
+                    <td className="py-4 text-right">-</td>
+                    <td className="py-4 text-right font-semibold text-teal-700">{formatCurrency(extra)}</td>
                   </tr>
                 )}
 
-                <tr>
-                  <td>
-                    <div className="row-main">GST (5%)</div>
-                    <div className="row-sub">Goods &amp; Services Tax</div>
+                <tr className="hover:bg-gray-50 transition-colors">
+                  <td className="py-4">
+                    <div className="font-medium text-gray-900">GST (5%)</div>
+                    <div className="text-sm text-gray-500">Goods and Services Tax</div>
                   </td>
-                  <td style={{ textAlign: 'center', color: '#9ca3af' }}>—</td>
-                  <td style={{ textAlign: 'center', color: '#9ca3af' }}>—</td>
-                  <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(tax)}</td>
+                  <td className="py-4 text-center">-</td>
+                  <td className="py-4 text-right">-</td>
+                  <td className="py-4 text-right font-semibold text-gray-900">{formatCurrency(tax)}</td>
                 </tr>
 
-                <tr className="total-row">
-                  <td colSpan="3" style={{ fontWeight: 700, fontSize: 14 }}>Total Amount</td>
-                  <td style={{ textAlign: 'right' }}><span className="total-amount">{fmt(total)}</span></td>
+                <tr className="bg-gradient-to-r from-teal-50 to-teal-100 font-bold border-t-2 border-teal-200">
+                  <td className="py-5 text-lg" colSpan="3">
+                    <span className="text-gray-900">Total Amount</span>
+                  </td>
+                  <td className="py-5 text-right text-2xl text-teal-700">{formatCurrency(total)}</td>
                 </tr>
               </tbody>
             </table>
+          </div>
 
-            {/* Payment Summary */}
-            <div className="payment-grid">
-              <div className="pay-card">
-                <div className="pay-label">Total Amount</div>
-                <div className={`pay-value pay-total`}>{fmt(total)}</div>
+          {/* Payment Summary */}
+          <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-10 py-8 border-t-2 border-gray-200">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  Payment Status
+                </div>
+                <div className={`text-2xl font-bold capitalize ${
+                  booking.paymentStatus === 'paid' ? 'text-green-600' :
+                  booking.paymentStatus === 'partial' ? 'text-orange-600' :
+                  'text-gray-600'
+                }`}>
+                  {booking.paymentStatus.replace('_', ' ')}
+                </div>
               </div>
-              <div className="pay-card">
-                <div className="pay-label">Amount Paid</div>
-                <div className="pay-value pay-paid">{fmt(paid)}</div>
-              </div>
-              <div className="pay-card">
-                <div className="pay-label">Balance Due</div>
-                <div className={`pay-value ${due > 0 ? 'pay-due-orange' : 'pay-due-green'}`}>{fmt(due)}</div>
-              </div>
-            </div>
 
-            {/* Terms */}
-            <div className="terms">
-              <div className="terms-title">Terms &amp; Conditions</div>
-              <ul className="terms-list">
-                <li>Check-in time: 2:00 PM &nbsp;|&nbsp; Check-out time: 12:00 PM</li>
-                <li>Late check-out may be subject to additional charges</li>
-                <li>Payment is due at the time of booking unless otherwise arranged</li>
-                <li>Cancellation policy as per hotel terms</li>
-              </ul>
+              <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  Amount Paid
+                </div>
+                <div className="text-2xl font-bold text-green-600">{formatCurrency(paid)}</div>
+              </div>
+
+              <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  Balance Due
+                </div>
+                <div className={`text-2xl font-bold ${due > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                  {formatCurrency(due)}
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* FOOTER */}
-          <div className="inv-footer">
-            <div className="thank-you">Thank you for choosing {booking.hotel?.name}!</div>
-            <p>This is a computer-generated invoice and does not require a signature.</p>
-            {contact.website && <p>🌐 {contact.website}</p>}
+          {/* Terms */}
+          <div className="px-10 py-6 bg-gray-50 border-t">
+            <h4 className="text-sm font-semibold text-gray-700 mb-2">Terms & Conditions</h4>
+            <ul className="text-xs text-gray-600 space-y-1">
+              <li>• Check-in time: 2:00 PM | Check-out time: 12:00 PM</li>
+              <li>• Late check-out may be subject to additional charges</li>
+              <li>• Payment is due at the time of booking unless otherwise arranged</li>
+              <li>• Cancellation policy as per hotel terms</li>
+            </ul>
+          </div>
+
+          {/* Footer */}
+          <div className="bg-gradient-to-r from-teal-700 to-teal-800 text-white px-10 py-6 text-center">
+            <p className="text-sm">
+              Thank you for choosing <span className="font-bold">{booking.hotel?.name}</span>
+            </p>
+            <p className="text-xs text-teal-200 mt-2">
+              This is a computer-generated invoice and does not require a signature.
+            </p>
+           {booking.hotel?.contact?.website && (
+  <p className="text-xs text-teal-200 mt-1">
+    Visit us at: <span className="font-semibold">{booking.hotel.contact.website}</span>
+  </p>
+)}
           </div>
 
         </div>
 
-        {/* Print tip */}
-        <div style={{ marginTop: 16, fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>
-          💡 Click "Download PDF" → select "Save as PDF" in the print dialog
+        {/* Print Tip */}
+        <div className="mt-6 text-center text-sm text-gray-500 print:hidden">
+          <p>💡 Tip: Click "Download PDF" and select "Save as PDF" in the print dialog</p>
         </div>
       </div>
-    </>
+
+      {/* Print Styles */}
+      <style jsx global>{`
+        @media print {
+          body {
+            margin: 0;
+            padding: 0;
+          }
+          
+          @page {
+            margin: 0;
+            size: A4;
+          }
+
+          .print\\:hidden {
+            display: none !important;
+          }
+
+          .print\\:shadow-none {
+            box-shadow: none !important;
+          }
+
+          .print\\:rounded-none {
+            border-radius: 0 !important;
+          }
+
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+        }
+      `}</style>
+    </div>
   );
 }

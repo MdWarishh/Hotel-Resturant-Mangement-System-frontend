@@ -86,6 +86,7 @@ const handleDownloadPDF = () => {
       : ''
     const hotelPhone = booking.hotel?.contact?.phone || ''
     const hotelEmail = booking.hotel?.contact?.email || ''
+    const hotelGstin = booking.hotel?.gstin || ''  // ✅ GSTIN add kiya
 
     const checkIn = booking.dates?.checkIn ? new Date(booking.dates.checkIn).toLocaleDateString('en-IN') : 'N/A'
     const checkOut = booking.dates?.checkOut ? new Date(booking.dates.checkOut).toLocaleDateString('en-IN') : 'N/A'
@@ -121,6 +122,7 @@ const handleDownloadPDF = () => {
   .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:28px; padding-bottom:20px; border-bottom:3px solid #111; }
   .hotel-info h1 { font-size:22px; font-weight:900; color:#111; letter-spacing:1px; text-transform:uppercase; margin-bottom:6px; }
   .hotel-info p { font-size:12px; color:#444; line-height:1.7; }
+  .hotel-info .gstin { font-size:12px; font-weight:800; color:#111; background:#f5f5f5; padding:2px 8px; border-left:3px solid #c0392b; margin-top:4px; display:inline-block; }
   .invoice-title { text-align:right; }
   .invoice-title h2 { font-size:32px; font-weight:900; color:#c0392b; letter-spacing:2px; font-style:italic; }
   .invoice-title .num { font-size:14px; color:#111; font-weight:700; margin-top:4px; letter-spacing:1px; }
@@ -178,6 +180,7 @@ const handleDownloadPDF = () => {
     ${hotelAddress ? `<p>${hotelAddress}</p>` : ''}
     ${hotelPhone ? `<p>Phone: ${hotelPhone}</p>` : ''}
     ${hotelEmail ? `<p>Email: ${hotelEmail}</p>` : ''}
+    ${hotelGstin ? `<p class="gstin">GSTIN: ${hotelGstin}</p>` : ''}
   </div>
   <div class="invoice-title">
     <h2>Booking Invoice</h2>
@@ -258,6 +261,7 @@ const handleDownloadPDF = () => {
   <p class="ty">Thank you for staying with us!</p>
   <p>This is a computer-generated invoice and does not require a signature.</p>
   ${booking.createdBy?.name ? `<p>Booking created by: ${booking.createdBy.name}</p>` : ''}
+  ${hotelGstin ? `<p>GSTIN: ${hotelGstin}</p>` : ''}
   ${hotelPhone || hotelEmail ? `<p>${hotelPhone ? 'Ph: ' + hotelPhone : ''} ${hotelEmail ? '| ' + hotelEmail : ''}</p>` : ''}
 </div>
 
