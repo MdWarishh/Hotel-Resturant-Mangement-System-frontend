@@ -69,6 +69,7 @@ function OrderDetailContent() {
       : ''
     const hotelPhone = order.hotel?.contact?.phone || ''
     const hotelEmail = order.hotel?.contact?.email || ''
+    const hotelGstin = order.hotel?.gst?.number || ''
     const orderDate = format(new Date(order.createdAt), 'dd/MM/yyyy')
     const orderTime = format(new Date(order.createdAt), 'hh:mm a')
     const locationText = order.tableNumber
@@ -111,9 +112,11 @@ function OrderDetailContent() {
   .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:28px; padding-bottom:20px; border-bottom:3px solid #111; }
   .hotel-info h1 { font-size:22px; font-weight:900; color:#111; letter-spacing:1px; text-transform:uppercase; margin-bottom:6px; }
   .hotel-info p { font-size:12px; color:#444; line-height:1.7; }
+  .hotel-info .gstin { font-size:12px; font-weight:800; color:#111; background:#f5f5f5; padding:2px 8px; border-left:3px solid #c0392b; margin-top:4px; display:inline-block; }
   .invoice-title { text-align:right; }
   .invoice-title h2 { font-size:36px; font-weight:900; color:#c0392b; letter-spacing:2px; font-style:italic; }
   .invoice-title .num { font-size:14px; color:#111; font-weight:700; margin-top:4px; letter-spacing:1px; }
+  .invoice-title .date { font-size:11px; color:#666; margin-top:4px; }
 
   /* ── INFO SECTION ── */
   .info-section { display:flex; justify-content:space-between; gap:24px; margin-bottom:28px; }
@@ -167,10 +170,12 @@ function OrderDetailContent() {
     ${hotelAddress ? `<p>${hotelAddress}</p>` : ''}
     ${hotelPhone ? `<p>Phone: ${hotelPhone}</p>` : ''}
     ${hotelEmail ? `<p>Email: ${hotelEmail}</p>` : ''}
+    ${hotelGstin ? `<p class="gstin">GSTIN: ${hotelGstin}</p>` : ''}
   </div>
   <div class="invoice-title">
     <h2>Invoice</h2>
-    <div class="num"># ${order.orderNumber || order._id.slice(-6)}</div>
+    <div class="num">Invoice No: ${order.invoiceNumber || order.orderNumber || order._id.slice(-6).toUpperCase()}</div>
+    <div class="date" style="font-size:11px;color:#666;margin-top:4px;">Date: ${orderDate}</div>
   </div>
 </div>
 
