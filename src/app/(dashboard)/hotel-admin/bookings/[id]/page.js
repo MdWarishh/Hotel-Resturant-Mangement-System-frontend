@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { apiRequest } from '@/services/api';
 import { 
   ArrowLeft, User, Phone, Mail, DoorOpen, Calendar, CreditCard, 
   Download, LogOut, Loader2, X, Clock, UserCheck, Globe, Image as ImageIcon 
 } from 'lucide-react';
+import { apiRequest } from '@/services/api';
 
 export default function BookingDetailsPage() {
   const { id } = useParams();
@@ -86,8 +86,8 @@ const handleDownloadPDF = () => {
       : ''
     const hotelPhone = booking.hotel?.contact?.phone || ''
     const hotelEmail = booking.hotel?.contact?.email || ''
-    const hotelGstin = booking.hotel?.gstin || ''  // ✅ GSTIN add kiya
-
+    const hotelGstin = booking.hotel?.gst?.number || ''
+console.log('Full hotel object:', JSON.stringify(booking.hotel))  // ← ye
     const checkIn = booking.dates?.checkIn ? new Date(booking.dates.checkIn).toLocaleDateString('en-IN') : 'N/A'
     const checkOut = booking.dates?.checkOut ? new Date(booking.dates.checkOut).toLocaleDateString('en-IN') : 'N/A'
     const actualCheckIn = booking.dates?.actualCheckIn ? new Date(booking.dates.actualCheckIn).toLocaleString('en-IN') : null
@@ -104,6 +104,7 @@ const handleDownloadPDF = () => {
     const advancePaid = booking.advancePayment || 0
     const dueAmount = total - advancePaid
 
+    const invoiceNum = booking.invoiceNumber || booking.bookingNumber
     const payStatus = booking.paymentStatus || 'pending'
     const paidColor = payStatus === 'paid' ? '#065f46' : payStatus === 'partially_paid' ? '#92400e' : '#991b1b'
     const paidBg = payStatus === 'paid' ? '#d1fae5' : payStatus === 'partially_paid' ? '#fef3c7' : '#fee2e2'
@@ -180,12 +181,13 @@ const handleDownloadPDF = () => {
     ${hotelAddress ? `<p>${hotelAddress}</p>` : ''}
     ${hotelPhone ? `<p>Phone: ${hotelPhone}</p>` : ''}
     ${hotelEmail ? `<p>Email: ${hotelEmail}</p>` : ''}
-    ${hotelGstin ? `<p class="gstin">GSTIN: ${hotelGstin}</p>` : ''}
+     ${hotelGstin ? `<p class="gstin">GSTIN: ${hotelGstin}</p>` : ''}
   </div>
   <div class="invoice-title">
     <h2>Booking Invoice</h2>
-    <div class="num"># ${booking.bookingNumber}</div>
-    <div class="date">Generated: ${new Date().toLocaleDateString('en-IN')}</div>
+    <div class="num">Invoice No: ${booking.invoiceNumber || booking.bookingNumber}</div>
+    <div class="num" style="font-size:12px;color:#666;font-weight:500;margin-top:2px;">Booking: ${booking.bookingNumber}</div>
+    <div class="date">Date: ${new Date().toLocaleDateString('en-IN')}</div>
   </div>
 </div>
 
@@ -261,7 +263,7 @@ const handleDownloadPDF = () => {
   <p class="ty">Thank you for staying with us!</p>
   <p>This is a computer-generated invoice and does not require a signature.</p>
   ${booking.createdBy?.name ? `<p>Booking created by: ${booking.createdBy.name}</p>` : ''}
-  ${hotelGstin ? `<p>GSTIN: ${hotelGstin}</p>` : ''}
+   ${hotelGstin ? `<p>GSTIN: ${hotelGstin}</p>` : ''}
   ${hotelPhone || hotelEmail ? `<p>${hotelPhone ? 'Ph: ' + hotelPhone : ''} ${hotelEmail ? '| ' + hotelEmail : ''}</p>` : ''}
 </div>
 
