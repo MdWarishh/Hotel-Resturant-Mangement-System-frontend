@@ -19,7 +19,6 @@ export default function CheckoutPage() {
   const hotelCode = params.hotelCode;
   
   const { cart, getCartTotals, clearCart } = useCart();
-  const { subtotal, tax, total } = getCartTotals();
 
   // Form State
   const [orderType, setOrderType] = useState('dine-in');
@@ -37,9 +36,12 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(false);
   const [loadingResources, setLoadingResources] = useState(false);
   const [error, setError] = useState('');
-  
-  // 🔥 NEW: Flag to prevent redirect after order is placed
+  const [hotelDeliveryCharge, setHotelDeliveryCharge] = useState(0);
   const [isOrderPlaced, setIsOrderPlaced] = useState(false);
+
+  // ✅ State ke BAAD — orderType aur hotelDeliveryCharge already defined hain ab
+  const deliveryCharge = orderType === 'delivery' ? hotelDeliveryCharge : 0;
+  const { subtotal, tax, delivery, total } = getCartTotals(deliveryCharge);
 
   // Redirect if cart is empty (BUT NOT if order was just placed)
   useEffect(() => {
@@ -47,6 +49,21 @@ export default function CheckoutPage() {
       router.push(`/allinone/${hotelCode}`);
     }
   }, [cart, hotelCode, router, isOrderPlaced]);
+
+  // Fetch hotel delivery charge on mount
+  useEffect(() => {
+    const fetchHotelSettings = async () => {
+      try {
+        const { getHotelByCode } = await import('@/services/allinonApi');
+        const res = await getHotelByCode(hotelCode);
+        const charge = res?.data?.hotel?.settings?.deliveryCharge || 0;
+        setHotelDeliveryCharge(charge);
+      } catch (err) {
+        console.error('Error fetching hotel settings:', err);
+      }
+    };
+    if (hotelCode) fetchHotelSettings();
+  }, [hotelCode]);
 
   // Fetch tables when dine-in is selected
   useEffect(() => {
@@ -155,6 +172,8 @@ export default function CheckoutPage() {
         orderData.tableNumber = selectedTable;
       } else if (orderType === 'room-service') {
         orderData.roomNumber = selectedRoom;
+      } else if (orderType === 'delivery') {
+        orderData.deliveryCharge = hotelDeliveryCharge;
       }
 
       // Place order
@@ -167,7 +186,15 @@ export default function CheckoutPage() {
       clearCart();
 
       // Navigate to success page with order number
-      const orderNumber = response.data.order.orderNumber;
+      // Handle multiple possible response structures
+      const orderResult = response?.data?.order || response?.data || response?.order || response;
+      const orderNumber = orderResult?.orderNumber || orderResult?._id;
+      
+      if (!orderNumber) {
+        console.error('Order response structure:', JSON.stringify(response));
+        throw new Error('Order placed but could not get order number');
+      }
+
       router.push(`/allinone/${hotelCode}/order-success?orderNumber=${orderNumber}`);
 
     } catch (err) {
@@ -463,6 +490,14 @@ export default function CheckoutPage() {
                   <span className="text-gray-600">GST (5%)</span>
                   <span className="text-black font-semibold">{formatPrice(tax)}</span>
                 </div>
+                {orderType === 'delivery' && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Delivery Charge</span>
+                    <span className={hotelDeliveryCharge > 0 ? "text-black font-semibold" : "text-green-600 font-semibold"}>
+                      {hotelDeliveryCharge > 0 ? formatPrice(hotelDeliveryCharge) : 'FREE'}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between text-lg font-bold pt-2 border-t border-gray-200 text-black">
                   <span>Total</span>
                   <span className="text-orange-600">{formatPrice(total)}</span>

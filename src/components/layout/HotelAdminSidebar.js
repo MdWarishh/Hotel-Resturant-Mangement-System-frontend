@@ -15,6 +15,7 @@ import {
   X,
   Hotel,
   QrCode,
+  Settings,
 } from 'lucide-react';
 
 const menu = [
@@ -53,7 +54,8 @@ const menu = [
     href: '/hotel-admin/reports',
     icon: BarChart3,
   },
-   { name: 'QR Code', icon: QrCode, href: '/hotel-admin/qr-code' },
+  { name: 'QR Code', icon: QrCode, href: '/hotel-admin/qr-code' },
+  { name: 'Settings', icon: Settings, href: '/hotel-admin/settings' },
 ];
 
 export default function HotelAdminSidebar() {

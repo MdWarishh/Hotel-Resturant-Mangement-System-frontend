@@ -41,10 +41,18 @@ export default function OrderSuccessPage() {
     try {
       setLoading(true);
       const response = await trackOrder(hotelCode, orderNumber);
-      const orderData = response.data.order;
-      setOrder(orderData);
+      
+      // trackOrder returns data.data — so response = { order: {...} }
+      const orderData = response?.order 
+        || response?.data?.order 
+        || response?.data 
+        || response;
 
-      // 🔥 FIX: Calculate totals if not present
+      if (!orderData || !orderData.orderNumber) {
+        throw new Error('Order data not found');
+      }
+
+      setOrder(orderData);
       calculateTotals(orderData);
     } catch (err) {
       console.error('Error fetching order:', err);
@@ -366,6 +374,12 @@ export default function OrderSuccessPage() {
                   <span className="text-gray-600">GST (5%)</span>
                   <span className="text-black font-semibold">{formatPrice(tax)}</span>
                 </div>
+                {(order.pricing?.deliveryCharge > 0) && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Delivery Charge</span>
+                    <span className="text-black font-semibold">{formatPrice(order.pricing.deliveryCharge)}</span>
+                  </div>
+                )}
                 <div className="text-black flex justify-between text-lg font-bold pt-3 border-t border-gray-200">
                   <span>Total Amount</span>
                   <span className="text-orange-600">{formatPrice(total)}</span>

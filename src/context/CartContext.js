@@ -176,10 +176,11 @@ export const CartProvider = ({ children, hotelCode }) => {
   };
 
   /**
-   * Get cart totals (subtotal, tax, total)
+   * Get cart totals (subtotal, tax, delivery, total)
+   * @param {number} deliveryCharge - Pass delivery charge for delivery orders
    */
-  const getCartTotals = () => {
-    return calculateCartTotal(cart);
+  const getCartTotals = (deliveryCharge = 0) => {
+    return calculateCartTotal(cart, deliveryCharge);
   };
 
   /**

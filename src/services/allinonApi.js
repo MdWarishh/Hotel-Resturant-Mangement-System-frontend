@@ -280,14 +280,16 @@ export const getOrderStatusColor = (status) => {
 /**
  * Calculate cart total
  * @param {Array} items - Cart items
+ * @param {number} deliveryCharge - Delivery charge (0 for non-delivery)
  */
-export const calculateCartTotal = (items) => {
+export const calculateCartTotal = (items, deliveryCharge = 0) => {
   const subtotal = items.reduce((sum, item) => {
     return sum + (item.price * item.quantity);
   }, 0);
   
   const tax = Math.ceil((subtotal * 5) / 100); // 5% GST
-  const total = subtotal + tax;
+  const delivery = Number(deliveryCharge) || 0;
+  const total = subtotal + tax + delivery;
   
-  return { subtotal, tax, total };
+  return { subtotal, tax, delivery, total };
 };
