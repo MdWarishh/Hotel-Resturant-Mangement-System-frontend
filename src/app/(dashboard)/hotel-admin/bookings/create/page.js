@@ -44,6 +44,7 @@ export default function CreateBookingPage() {
     source: 'Direct',
     manualPrice: '',
     useManualPrice: false,
+    additionalGuests: [],
   });
 
   const [loading, setLoading] = useState(false);
@@ -160,6 +161,29 @@ export default function CreateBookingPage() {
     const { name, value } = e.target;
     setForm(prev => ({ ...prev, [name]: value }));
     setErrors(prev => ({ ...prev, [name]: '' }));
+  };
+
+
+  const addAdditionalGuest = () => {
+    setForm(prev => ({
+      ...prev,
+      additionalGuests: [...prev.additionalGuests, { name: "", phone: "" }]
+    }));
+  };
+
+  const removeAdditionalGuest = (index) => {
+    setForm(prev => ({
+      ...prev,
+      additionalGuests: prev.additionalGuests.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleAdditionalGuestChange = (index, field, value) => {
+    setForm(prev => {
+      const updated = [...prev.additionalGuests];
+      updated[index] = { ...updated[index], [field]: value };
+      return { ...prev, additionalGuests: updated };
+    });
   };
 
   const handleManualPriceToggle = (e) => {
@@ -312,6 +336,7 @@ const handleSubmit = async (e) => {
       specialRequests: form.specialRequests || '',
       advancePayment: form.advancePayment ? Number(form.advancePayment) : 0,
       source: form.source,
+      additionalGuests: form.additionalGuests.filter(g => g.name.trim()).map(g => ({ name: g.name.trim(), phone: g.phone.trim() })),
     };
 
     if (bookingType === 'hourly') {
@@ -328,7 +353,12 @@ const handleSubmit = async (e) => {
       body: bookingData,  // ✅ Just the object
     });
 
-    router.push(`/hotel-admin/bookings/${response.data.booking._id}`);
+   const role = user?.role; // ya jo bhi tumhara role field hai
+if (role === 'cashier') {
+  router.push(`/cashier/bookings/${response.data.booking._id}`);
+} else {
+  router.push(`/hotel-admin/bookings/${response.data.booking._id}`);
+}
   } catch (error) {
     console.error('Booking error:', error);
     alert(error.message || 'Failed to create booking');
@@ -551,6 +581,53 @@ const handleSubmit = async (e) => {
                       <option value="Agoda">Agoda</option>
                     </select>
                   </div>
+                </div>
+
+                {/* Additional Guests */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                      <Users className="h-5 w-5" /> Additional Guests <span className="text-sm font-normal text-gray-500">(optional)</span>
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={addAdditionalGuest}
+                      className="flex items-center gap-2 px-4 py-2 bg-teal-50 border border-teal-300 text-teal-700 rounded-xl text-sm font-medium hover:bg-teal-100 transition-colors"
+                    >
+                      + Add Guest
+                    </button>
+                  </div>
+                  {form.additionalGuests.length === 0 && (
+                    <p className="text-sm text-gray-400 italic">No additional guests added</p>
+                  )}
+                  {form.additionalGuests.map((guest, index) => (
+                    <div key={index} className="flex gap-3 items-center mt-3 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          placeholder={`Guest ${index + 2} Name`}
+                          value={guest.name}
+                          onChange={(e) => handleAdditionalGuestChange(index, "name", e.target.value)}
+                          className="text-black w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:border-teal-500 text-sm mb-2"
+                        />
+                        <input
+                          type="tel"
+                          placeholder="Phone (optional)"
+                          value={guest.phone}
+                          onChange={(e) => handleAdditionalGuestChange(index, "phone", e.target.value)}
+                          className="text-black w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:border-teal-500 text-sm"
+                          maxLength={10}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeAdditionalGuest(index)}
+                        className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
                 </div>
 
                 {/* Check-in/out Dates */}

@@ -7,6 +7,7 @@ import { ShoppingCart, Minus, Plus, Trash2, Tag, Printer, AlertCircle, UtensilsC
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import PaymentModal from '@/components/cashier/PaymentModal';
+import KotPrintButton from '@/app/(dashboard)/cashier/KotPrintButton/page';
 
 export default function CartSection({ onOrderSuccess, requirePayment = true }) {
   const { order, addItem, removeItem, updateQuantity, applyDiscount, resetOrder } = useOrder();
@@ -214,6 +215,12 @@ const handlePaymentSuccess = (updatedOrder) => {
   )}
 
   {/* STEP 2: CASH PAYMENT BUTTON (only if order created + payment needed) */}
+  {createdOrder && (
+  <KotPrintButton
+    orderId={createdOrder._id} 
+    orderNumber={createdOrder.orderNumber} 
+  />
+)}
   {requirePayment && createdOrder && (
     <button
       onClick={() => setShowPayment(true)}

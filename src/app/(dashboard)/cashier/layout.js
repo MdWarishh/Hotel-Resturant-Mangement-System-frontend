@@ -12,7 +12,8 @@ import {
   Loader2,
   Menu,
   X,
-  BedDouble, // Added for Bookings icon
+  BedDouble,
+  ChefHat, // Kitchen icon
 } from 'lucide-react';
 
 export default function CashierLayout({ children }) {
@@ -95,12 +96,19 @@ export default function CashierLayout({ children }) {
             onClick={() => router.push('/cashier/pos/history')}
           />
 
-          {/* NEW: Bookings Section */}
           <SidebarItem
             icon={<BedDouble size={20} />}
             label="Bookings"
             active={pathname.startsWith('/cashier/bookings')}
             onClick={() => router.push('/cashier/bookings')}
+          />
+
+          {/* Kitchen Display */}
+          <SidebarItem
+            icon={<ChefHat size={20} />}
+            label="Kitchen Display"
+            active={pathname.startsWith('/cashier/kitchen')}
+            onClick={() => router.push('/cashier/kitchen')}
           />
         </nav>
 

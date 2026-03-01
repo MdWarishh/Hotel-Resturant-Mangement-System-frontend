@@ -63,7 +63,7 @@ function OrderDetailContent() {
  const handlePrintBill = () => {
     if (!order) return
 
-    const hotelName = order.hotel?.name || 'Hotel'
+    const hotelName = 'Amulya Resturant'
     const hotelAddress = order.hotel?.address
       ? `${order.hotel.address.street || ''}, ${order.hotel.address.city || ''}, ${order.hotel.address.state || ''} ${order.hotel.address.pincode || ''}`
       : ''

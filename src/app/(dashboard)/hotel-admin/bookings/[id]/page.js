@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { 
-  ArrowLeft, User, Phone, Mail, DoorOpen, Calendar, CreditCard, 
+  ArrowLeft, User, Users, Phone, Mail, DoorOpen, Calendar, CreditCard, 
   Download, LogOut, Loader2, X, Clock, UserCheck, Globe, Image as ImageIcon 
 } from 'lucide-react';
 import { apiRequest } from '@/services/api';
@@ -200,6 +200,15 @@ console.log('Full hotel object:', JSON.stringify(booking.hotel))  // ← ye
     ${booking.guest?.email ? `<div class="info-row"><span class="info-label">Email</span><span class="info-value">${booking.guest.email}</span></div>` : ''}
     ${booking.guest?.idProof?.type ? `<div class="info-row"><span class="info-label">ID Proof</span><span class="info-value">${booking.guest.idProof.type.toUpperCase()} - ${booking.guest.idProof.number || ''}</span></div>` : ''}
     ${booking.source ? `<div class="info-row"><span class="info-label">Booked Via</span><span class="info-value">${booking.source}</span></div>` : ''}
+    ${booking.additionalGuests?.length > 0 ? `
+    <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #ccc;">
+      <div class="section-label" style="margin-bottom:6px;">Additional Guests</div>
+      ${booking.additionalGuests.map((g, i) => `
+      <div class="info-row" style="margin-bottom:4px;">
+        <span class="info-label" style="min-width:20px;color:#c0392b;font-weight:900;">${i+2}.</span>
+        <span class="info-value">${g.name}${g.phone ? ' &nbsp;<span style="color:#666;font-weight:500;font-size:11px;">&#128222; ' + g.phone + '</span>' : ''}</span>
+      </div>`).join('')}
+    </div>` : ''}
   </div>
   <div class="col">
     <div class="section-label">Booking Info</div>
@@ -374,6 +383,27 @@ console.log('Full hotel object:', JSON.stringify(booking.hotel))  // ← ye
                 </div>
               )}
             </div>
+
+            {booking.additionalGuests?.length > 0 && (
+              <div className="mt-8">
+                <p className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-widest flex items-center gap-2">
+                  <Users className="h-4 w-4 text-teal-600" /> Additional Guests ({booking.additionalGuests.length})
+                </p>
+                <div className="space-y-3">
+                  {booking.additionalGuests.map((g, i) => (
+                    <div key={i} className="flex items-center gap-4 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                      <div className="w-8 h-8 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-sm flex-shrink-0">
+                        {i + 2}
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">{g.name}</p>
+                        {g.phone && <p className="text-sm text-gray-500 flex items-center gap-1"><Phone className="h-3 w-3" /> {g.phone}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {booking.specialRequests && (
               <div className="mt-8 p-6 bg-amber-50 border border-amber-200 rounded-2xl">
