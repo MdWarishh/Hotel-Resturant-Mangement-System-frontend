@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { 
   ArrowLeft, Building2, DoorOpen, User, Mail, Phone, CreditCard, 
   Users, Calendar, Loader2, AlertCircle, CheckCircle2, Info, Upload, Clock,
-  DollarSign
+  DollarSign, Plus, Trash2, Tag
 } from 'lucide-react';
 
 export default function CreateBookingPage() {
@@ -45,6 +45,11 @@ export default function CreateBookingPage() {
     manualPrice: '',
     useManualPrice: false,
     additionalGuests: [],
+    // 🆕 Custom Charges
+    customCharges: [],
+    // 🆕 Daily manual price
+    useManualDailyPrice: false,
+    manualDailyPrice: '',
   });
 
   const [loading, setLoading] = useState(false);
@@ -79,6 +84,9 @@ export default function CreateBookingPage() {
     }
   }, [bookingType, form.checkInDate, form.checkInTime, form.hours]);
 
+  // 🆕 customCharges ka total
+  const customChargesTotal = form.customCharges.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
+
   useEffect(() => {
     if (!selectedRoom || !form.checkInDate) {
       setPricingPreview(null);
@@ -109,20 +117,36 @@ export default function CreateBookingPage() {
       }
 
       const nights = Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
-      let roomCharges = selectedRoom.pricing.basePrice * nights;
-      let extraCharges = 0;
+      
+      // 🆕 Custom daily price support
+      let roomCharges;
+      if (form.useManualDailyPrice && form.manualDailyPrice) {
+        roomCharges = Number(form.manualDailyPrice);
+      } else {
+        roomCharges = selectedRoom.pricing.basePrice * nights;
+      }
 
+      let extraCharges = 0;
       const extraAdults = Math.max(0, Number(form.adults) - (selectedRoom.capacity?.adults || 0));
       extraCharges += extraAdults * (selectedRoom.pricing.extraAdultCharge || 0) * nights;
-
       const extraChildren = Math.max(0, Number(form.children) - (selectedRoom.capacity?.children || 0));
       extraCharges += extraChildren * (selectedRoom.pricing.extraChildCharge || 0) * nights;
 
-      const subtotal = roomCharges + extraCharges;
+      // 🆕 customCharges add
+      const subtotal = roomCharges + extraCharges + customChargesTotal;
       const tax = Math.ceil(subtotal * 0.05);
       const total = subtotal + tax;
 
-      setPricingPreview({ duration: nights, roomCharges, extraCharges, subtotal, tax, total });
+      setPricingPreview({ 
+        duration: nights, 
+        roomCharges, 
+        extraCharges, 
+        customChargesTotal,
+        subtotal, 
+        tax, 
+        total,
+        isManualPrice: form.useManualDailyPrice,
+      });
     } else {
       const duration = form.hours;
       
@@ -140,7 +164,8 @@ export default function CreateBookingPage() {
       }
       
       const extraCharges = 0;
-      const subtotal = roomCharges + extraCharges;
+      // 🆕 customCharges add for hourly too
+      const subtotal = roomCharges + extraCharges + customChargesTotal;
       const tax = Math.ceil(subtotal * 0.05);
       const total = subtotal + tax;
 
@@ -148,6 +173,7 @@ export default function CreateBookingPage() {
         duration, 
         roomCharges, 
         extraCharges, 
+        customChargesTotal,
         subtotal, 
         tax, 
         total, 
@@ -155,14 +181,17 @@ export default function CreateBookingPage() {
         isManualPrice: form.useManualPrice
       });
     }
-  }, [selectedRoom, form.checkInDate, form.checkOutDate, form.adults, form.children, form.hours, bookingType, form.useManualPrice, form.manualPrice]);
+  }, [
+    selectedRoom, form.checkInDate, form.checkOutDate, form.adults, form.children,
+    form.hours, bookingType, form.useManualPrice, form.manualPrice,
+    form.useManualDailyPrice, form.manualDailyPrice, customChargesTotal
+  ]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm(prev => ({ ...prev, [name]: value }));
     setErrors(prev => ({ ...prev, [name]: '' }));
   };
-
 
   const addAdditionalGuest = () => {
     setForm(prev => ({
@@ -186,12 +215,45 @@ export default function CreateBookingPage() {
     });
   };
 
+  // 🆕 Custom Charges handlers
+  const addCustomCharge = () => {
+    setForm(prev => ({
+      ...prev,
+      customCharges: [...prev.customCharges, { label: '', amount: '' }]
+    }));
+  };
+
+  const removeCustomCharge = (index) => {
+    setForm(prev => ({
+      ...prev,
+      customCharges: prev.customCharges.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleCustomChargeChange = (index, field, value) => {
+    setForm(prev => {
+      const updated = [...prev.customCharges];
+      updated[index] = { ...updated[index], [field]: value };
+      return { ...prev, customCharges: updated };
+    });
+  };
+
   const handleManualPriceToggle = (e) => {
     const checked = e.target.checked;
     setForm(prev => ({ 
       ...prev, 
       useManualPrice: checked,
       manualPrice: checked ? '' : ''
+    }));
+  };
+
+  // 🆕 Daily manual price toggle
+  const handleManualDailyPriceToggle = (e) => {
+    const checked = e.target.checked;
+    setForm(prev => ({
+      ...prev,
+      useManualDailyPrice: checked,
+      manualDailyPrice: checked ? '' : ''
     }));
   };
 
@@ -219,9 +281,7 @@ export default function CreateBookingPage() {
     reader.readAsDataURL(file);
   };
 
-  // 🔥 FIXED: Complete validation function
   const isFormValid = () => {
-    // Base validation
     const hasRoom = !!form.room;
     const hasName = form.guestName.trim().length > 0;
     const hasPhone = /^\d{10}$/.test(form.guestPhone);
@@ -232,142 +292,119 @@ export default function CreateBookingPage() {
 
     const baseValid = hasRoom && hasName && hasPhone && hasCheckIn && hasSource && hasSelectedRoom && hasPricing;
 
-    if (!baseValid) {
-      // Debug output
-      console.log('Base validation failed:', {
-        hasRoom,
-        hasName,
-        hasPhone,
-        hasCheckIn,
-        hasSource,
-        hasSelectedRoom,
-        hasPricing
-      });
-      return false;
-    }
+    if (!baseValid) return false;
+
+    // 🆕 Custom charges validation - agar add ki hain toh label aur amount dono required
+    const customChargesValid = form.customCharges.every(
+      c => c.label.trim().length > 0 && Number(c.amount) > 0
+    );
+    if (!customChargesValid) return false;
 
     if (bookingType === 'daily') {
       const hasCheckOut = !!form.checkOutDate;
       const noCheckInError = !errors.checkInDate;
       const noCheckOutError = !errors.checkOutDate;
-      
-      const isValid = hasCheckOut && noCheckInError && noCheckOutError;
-      
-      if (!isValid) {
-        console.log('Daily validation failed:', {
-          hasCheckOut,
-          noCheckInError,
-          noCheckOutError
-        });
-      }
-      
-      return isValid;
+      // 🆕 Daily manual price validation
+      const manualDailyValid = form.useManualDailyPrice 
+        ? (form.manualDailyPrice && Number(form.manualDailyPrice) > 0) 
+        : true;
+      return hasCheckOut && noCheckInError && noCheckOutError && manualDailyValid;
     } else {
-      // Hourly validation
       const validHours = form.hours >= 1 && form.hours <= 12;
-      
-      // Manual price validation - only required if checkbox is enabled
       let manualPriceValid = true;
       if (form.useManualPrice) {
         manualPriceValid = form.manualPrice && Number(form.manualPrice) > 0;
       }
-      
-      const isValid = validHours && manualPriceValid;
-      
-      if (!isValid) {
-        console.log('Hourly validation failed:', {
-          validHours,
-          hours: form.hours,
-          useManualPrice: form.useManualPrice,
-          manualPrice: form.manualPrice,
-          manualPriceValid
-        });
-      }
-      
-      return isValid;
+      return validHours && manualPriceValid;
     }
   };
 
- 
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  
-  // ✅ Check validation first
-  if (!isFormValid()) {
-    alert('Please fill all required fields correctly');
-    return;
-  }
-  
-  setLoading(true);
-
-  try {
-    let checkIn, checkOut;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     
-    if (bookingType === 'hourly') {
-      checkIn = new Date(`${form.checkInDate}T${form.checkInTime}`);
-      checkOut = new Date(checkIn.getTime() + form.hours * 60 * 60 * 1000);
-    } else {
-      checkIn = new Date(`${form.checkInDate}T${form.checkInTime}`);
-      checkOut = new Date(`${form.checkOutDate}T${form.checkOutTime}`);
+    if (!isFormValid()) {
+      alert('Please fill all required fields correctly');
+      return;
     }
+    
+    setLoading(true);
 
-    const bookingData = {
-      hotel: hotelId,
-      room: form.room,
-      bookingType,
-      guest: {
-        name: form.guestName.trim(),
-        email: form.guestEmail.trim() || undefined,
-        phone: form.guestPhone.trim(),
-        idProof: {
-          type: form.idProofType,
-          number: form.idProofNumber,
-          imageBase64: form.idProofImageBase64,
-        },
-      },
-      numberOfGuests: {
-        adults: Number(form.adults),
-        children: Number(form.children),
-      },
-      dates: {
-        checkIn: checkIn.toISOString(),
-        checkOut: checkOut.toISOString(),
-      },
-      specialRequests: form.specialRequests || '',
-      advancePayment: form.advancePayment ? Number(form.advancePayment) : 0,
-      source: form.source,
-      additionalGuests: form.additionalGuests.filter(g => g.name.trim()).map(g => ({ name: g.name.trim(), phone: g.phone.trim() })),
-    };
-
-    if (bookingType === 'hourly') {
-      bookingData.hours = form.hours;
+    try {
+      let checkIn, checkOut;
       
-      if (form.useManualPrice && form.manualPrice) {
-        bookingData.manualHourlyRate = Number(form.manualPrice);
+      if (bookingType === 'hourly') {
+        checkIn = new Date(`${form.checkInDate}T${form.checkInTime}`);
+        checkOut = new Date(checkIn.getTime() + form.hours * 60 * 60 * 1000);
+      } else {
+        checkIn = new Date(`${form.checkInDate}T${form.checkInTime}`);
+        checkOut = new Date(`${form.checkOutDate}T${form.checkOutTime}`);
       }
+
+      const bookingData = {
+        hotel: hotelId,
+        room: form.room,
+        bookingType,
+        guest: {
+          name: form.guestName.trim(),
+          email: form.guestEmail.trim() || undefined,
+          phone: form.guestPhone.trim(),
+          idProof: {
+            type: form.idProofType,
+            number: form.idProofNumber,
+            imageBase64: form.idProofImageBase64,
+          },
+        },
+        numberOfGuests: {
+          adults: Number(form.adults),
+          children: Number(form.children),
+        },
+        dates: {
+          checkIn: checkIn.toISOString(),
+          checkOut: checkOut.toISOString(),
+        },
+        specialRequests: form.specialRequests || '',
+        advancePayment: form.advancePayment ? Number(form.advancePayment) : 0,
+        source: form.source,
+        additionalGuests: form.additionalGuests
+          .filter(g => g.name.trim())
+          .map(g => ({ name: g.name.trim(), phone: g.phone.trim() })),
+        // 🆕 customCharges send karo (valid ones only)
+        customCharges: form.customCharges
+          .filter(c => c.label.trim() && Number(c.amount) > 0)
+          .map(c => ({ label: c.label.trim(), amount: Number(c.amount) })),
+      };
+
+      if (bookingType === 'hourly') {
+        bookingData.hours = form.hours;
+        if (form.useManualPrice && form.manualPrice) {
+          bookingData.manualHourlyRate = Number(form.manualPrice);
+        }
+      } else {
+        // 🆕 Daily custom price send karo
+        if (form.useManualDailyPrice && form.manualDailyPrice) {
+          bookingData.manualDailyRate = Number(form.manualDailyPrice);
+        }
+      }
+
+      const response = await apiRequest('/bookings', {
+        method: 'POST',
+        body: bookingData,
+      });
+
+      const role = user?.role;
+      if (role === 'cashier') {
+        router.push(`/cashier/bookings/${response.data.booking._id}`);
+      } else {
+        router.push(`/hotel-admin/bookings/${response.data.booking._id}`);
+      }
+    } catch (error) {
+      console.error('Booking error:', error);
+      alert(error.message || 'Failed to create booking');
+    } finally {
+      setLoading(false);
     }
+  };
 
-    // 🔥 FIXED: Simple apiRequest call
-    const response = await apiRequest('/bookings', {
-      method: 'POST',
-      body: bookingData,  // ✅ Just the object
-    });
-
-   const role = user?.role; // ya jo bhi tumhara role field hai
-if (role === 'cashier') {
-  router.push(`/cashier/bookings/${response.data.booking._id}`);
-} else {
-  router.push(`/hotel-admin/bookings/${response.data.booking._id}`);
-}
-  } catch (error) {
-    console.error('Booking error:', error);
-    alert(error.message || 'Failed to create booking');
-  } finally {
-    setLoading(false);
-  }
-};
-
-  // 🔥 Debug output - shows current validation state
   const validationState = isFormValid();
 
   return (
@@ -384,28 +421,12 @@ if (role === 'cashier') {
           </div>
         </div>
 
-        {/* 🔥 DEBUG PANEL - Remove this after fixing */}
-        {/* <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <p className="text-sm font-mono text-gray-800">
-            🐛 Debug: Form Valid = <strong>{validationState ? 'YES ✅' : 'NO ❌'}</strong>
-            {' | '}
-            Room: {form.room ? '✅' : '❌'}
-            {' | '}
-            Name: {form.guestName ? '✅' : '❌'}
-            {' | '}
-            Phone: {/^\d{10}$/.test(form.guestPhone) ? '✅' : '❌'}
-            {' | '}
-            Date: {form.checkInDate ? '✅' : '❌'}
-            {' | '}
-            Pricing: {pricingPreview ? '✅' : '❌'}
-          </p>
-        </div> */}
-
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Form Section */}
           <div className="lg:col-span-8">
             <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-8">
               <form onSubmit={handleSubmit} className="space-y-8">
+                
                 {/* Room Selection */}
                 <div>
                   <label className="block text-base font-medium text-gray-800 mb-2">
@@ -573,7 +594,6 @@ if (role === 'cashier') {
                     >
                       <option value="Direct">Direct</option>
                       <option value="Airbnb">Airbnb</option>
-                      {/* <option value="Walk-in">Walk-in</option> */}
                       <option value="Booking.com">Booking.com</option>
                       <option value="MakeMyTrip">MakeMyTrip</option>
                       <option value="OYO">OYO</option>
@@ -630,72 +650,125 @@ if (role === 'cashier') {
                   ))}
                 </div>
 
-                {/* Check-in/out Dates */}
+                {/* Stay Details */}
                 <div>
                   <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
                     <Calendar className="h-5 w-5" /> Stay Details
                   </h3>
 
                   {bookingType === 'daily' ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <label className="block text-base font-medium text-gray-800 mb-2">
-                          Check-in Date <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="date"
-                          name="checkInDate"
-                          value={form.checkInDate}
-                          onChange={handleChange}
-                          min={new Date().toISOString().split('T')[0]}
-                          className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
-                          required
-                        />
-                        {errors.checkInDate && <p className="text-red-500 text-sm mt-1">{errors.checkInDate}</p>}
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-base font-medium text-gray-800 mb-2">
+                            Check-in Date <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="date"
+                            name="checkInDate"
+                            value={form.checkInDate}
+                            onChange={handleChange}
+                            min={new Date().toISOString().split('T')[0]}
+                            className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                            required
+                          />
+                          {errors.checkInDate && <p className="text-red-500 text-sm mt-1">{errors.checkInDate}</p>}
+                        </div>
+
+                        <div>
+                          <label className="block text-base font-medium text-gray-800 mb-2">
+                            Check-in Time <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="time"
+                            name="checkInTime"
+                            value={form.checkInTime}
+                            onChange={handleChange}
+                            className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-base font-medium text-gray-800 mb-2">
+                            Check-out Date <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="date"
+                            name="checkOutDate"
+                            value={form.checkOutDate}
+                            onChange={handleChange}
+                            min={form.checkInDate || new Date().toISOString().split('T')[0]}
+                            className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                            required
+                          />
+                          {errors.checkOutDate && <p className="text-red-500 text-sm mt-1">{errors.checkOutDate}</p>}
+                        </div>
+
+                        <div>
+                          <label className="block text-base font-medium text-gray-800 mb-2">
+                            Check-out Time <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="time"
+                            name="checkOutTime"
+                            value={form.checkOutTime}
+                            onChange={handleChange}
+                            className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
+                            required
+                          />
+                        </div>
                       </div>
 
-                      <div>
-                        <label className="block text-base font-medium text-gray-800 mb-2">
-                          Check-in Time <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="time"
-                          name="checkInTime"
-                          value={form.checkInTime}
-                          onChange={handleChange}
-                          className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
-                          required
-                        />
-                      </div>
+                      {/* 🆕 Daily Custom Price */}
+                      <div className="bg-teal-50 border border-teal-200 rounded-xl p-6">
+                        <div className="flex items-start gap-3 mb-4">
+                          <input
+                            type="checkbox"
+                            id="useManualDailyPrice"
+                            checked={form.useManualDailyPrice}
+                            onChange={handleManualDailyPriceToggle}
+                            className="mt-1 w-5 h-5 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
+                          />
+                          <div className="flex-1">
+                            <label htmlFor="useManualDailyPrice" className="text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
+                              <DollarSign className="h-5 w-5 text-teal-600" />
+                              Set Custom Price Per Night
+                            </label>
+                            <p className="text-sm text-gray-600 mt-1">
+                              Override default room price and set your own nightly rate
+                            </p>
+                            {selectedRoom && !form.useManualDailyPrice && (
+                              <p className="text-xs text-teal-700 mt-1 font-medium">
+                                Default: ₹{selectedRoom.pricing.basePrice}/night
+                              </p>
+                            )}
+                          </div>
+                        </div>
 
-                      <div>
-                        <label className="block text-base font-medium text-gray-800 mb-2">
-                          Check-out Date <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="date"
-                          name="checkOutDate"
-                          value={form.checkOutDate}
-                          onChange={handleChange}
-                          min={form.checkInDate || new Date().toISOString().split('T')[0]}
-                          className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
-                          required
-                        />
-                        {errors.checkOutDate && <p className="text-red-500 text-sm mt-1">{errors.checkOutDate}</p>}
-                      </div>
-
-                      <div>
-                        <label className="block text-base font-medium text-gray-800 mb-2">
-                          Check-out Time <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="time"
-                          name="checkOutTime"
-                          value={form.checkOutTime}
-                          onChange={handleChange}
-                          className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200"
-                          required
-                        />
+                        {form.useManualDailyPrice && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Custom Price Per Night (₹) <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="number"
+                              name="manualDailyPrice"
+                              value={form.manualDailyPrice}
+                              onChange={handleChange}
+                              min="1"
+                              step="1"
+                              placeholder="Enter price per night"
+                              className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200 font-semibold text-lg"
+                              required
+                            />
+                            {form.manualDailyPrice && form.checkInDate && form.checkOutDate && (
+                              <p className="text-sm text-green-700 mt-2 font-medium">
+                                Total Room: ₹{(Number(form.manualDailyPrice) * Math.ceil((new Date(form.checkOutDate) - new Date(form.checkInDate)) / 86400000)).toLocaleString()}
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -764,7 +837,7 @@ if (role === 'cashier') {
                         </div>
 
                         {form.useManualPrice && (
-                          <div className="mt-4">
+                          <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
                               Custom Price Per Hour (₹) <span className="text-red-500">*</span>
                             </label>
@@ -830,7 +903,73 @@ if (role === 'cashier') {
                   </div>
                 </div>
 
-                {/* Additional */}
+                {/* 🆕 Extra / Custom Charges Section */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                      <Tag className="h-5 w-5 text-purple-600" /> 
+                      Extra Charges 
+                      <span className="text-sm font-normal text-gray-500">(optional)</span>
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={addCustomCharge}
+                      className="flex items-center gap-2 px-4 py-2 bg-purple-50 border border-purple-300 text-purple-700 rounded-xl text-sm font-medium hover:bg-purple-100 transition-colors"
+                    >
+                      <Plus className="h-4 w-4" /> Add Charge
+                    </button>
+                  </div>
+
+                  {form.customCharges.length === 0 ? (
+                    <p className="text-sm text-gray-400 italic">No extra charges added. Click "Add Charge" to add AC charge, extra bed, etc.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {form.customCharges.map((charge, index) => (
+                        <div key={index} className="flex gap-3 items-start p-4 bg-purple-50 rounded-xl border border-purple-200">
+                          <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Charge Description <span className="text-red-500">*</span></label>
+                              <input
+                                type="text"
+                                placeholder="e.g. AC Charge, Extra Bed, Laundry"
+                                value={charge.label}
+                                onChange={(e) => handleCustomChargeChange(index, 'label', e.target.value)}
+                                className="text-black w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:border-purple-500 text-sm bg-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Amount (₹) <span className="text-red-500">*</span></label>
+                              <input
+                                type="number"
+                                placeholder="0"
+                                min="1"
+                                value={charge.amount}
+                                onChange={(e) => handleCustomChargeChange(index, 'amount', e.target.value)}
+                                className="text-black w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:border-purple-500 text-sm bg-white font-semibold"
+                              />
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeCustomCharge(index)}
+                            className="mt-6 p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                      {customChargesTotal > 0 && (
+                        <div className="flex justify-end">
+                          <p className="text-sm font-semibold text-purple-700 bg-purple-100 px-4 py-2 rounded-lg">
+                            Extra Charges Total: ₹{customChargesTotal.toLocaleString()}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Special Requests & Advance Payment */}
                 <div className="space-y-6">
                   <div>
                     <label className="block text-base font-medium text-gray-800 mb-2">Special Requests (optional)</label>
@@ -911,6 +1050,14 @@ if (role === 'cashier') {
                           )}
                         </span>
                       )}
+                      {bookingType === 'daily' && pricingPreview.isManualPrice && (
+                        <span className="block text-xs mt-1">
+                          @ ₹{form.manualDailyPrice}/night
+                          <span className="ml-2 px-2 py-0.5 bg-teal-200 text-teal-900 rounded-full text-xs font-semibold">
+                            CUSTOM
+                          </span>
+                        </span>
+                      )}
                     </div>
                     <div className="text-3xl font-bold text-gray-900">₹{pricingPreview.roomCharges.toLocaleString()}</div>
 
@@ -922,6 +1069,26 @@ if (role === 'cashier') {
                       </div>
                     )}
                   </div>
+
+                  {/* 🆕 Custom Charges in Summary */}
+                  {form.customCharges.filter(c => c.label && Number(c.amount) > 0).length > 0 && (
+                    <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 space-y-2">
+                      <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-2">Extra Charges</p>
+                      {form.customCharges
+                        .filter(c => c.label && Number(c.amount) > 0)
+                        .map((c, i) => (
+                          <div key={i} className="flex justify-between text-sm text-purple-800">
+                            <span>{c.label}</span>
+                            <span className="font-semibold">+₹{Number(c.amount).toLocaleString()}</span>
+                          </div>
+                        ))
+                      }
+                      <div className="border-t border-purple-300 pt-2 flex justify-between text-sm font-bold text-purple-900">
+                        <span>Extra Total</span>
+                        <span>₹{customChargesTotal.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="space-y-3 text-gray-700">
                     <div className="flex justify-between">
@@ -941,6 +1108,13 @@ if (role === 'cashier') {
                       <div className="flex justify-between text-green-700 font-medium pt-2 border-t border-gray-200">
                         <span>Advance Paid</span>
                         <span>- ₹{Number(form.advancePayment).toLocaleString()}</span>
+                      </div>
+                    )}
+
+                    {Number(form.advancePayment) > 0 && pricingPreview && (
+                      <div className="flex justify-between text-orange-700 font-semibold">
+                        <span>Due Amount</span>
+                        <span>₹{(pricingPreview.total - Number(form.advancePayment)).toLocaleString()}</span>
                       </div>
                     )}
                   </div>
