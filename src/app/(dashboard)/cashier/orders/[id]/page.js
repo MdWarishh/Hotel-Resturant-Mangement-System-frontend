@@ -94,6 +94,8 @@ function OrderDetailContent() {
     const tax = order.pricing?.tax || 0
     const discount = order.pricing?.discount || 0
     const total = order.pricing?.total || 0
+    const extraCharges = order.extraCharges || []
+    const extraChargesTotal = order.pricing?.extraChargesTotal || 0
     const paymentMode = order.payment?.mode || 'N/A'
     const paymentStatus = order.payment?.status || 'UNPAID'
     const paidColor = paymentStatus === 'PAID' ? '#065f46' : '#991b1b'
@@ -217,6 +219,7 @@ function OrderDetailContent() {
   <div class="totals-box">
     <div class="totals-row"><span class="lbl">Subtotal</span><span class="val">&#8377;${subtotal.toLocaleString('en-IN')}</span></div>
     ${discount > 0 ? `<div class="totals-row"><span class="lbl">Discount</span><span class="val" style="color:#c0392b;">- &#8377;${discount.toLocaleString('en-IN')}</span></div>` : ''}
+    ${extraCharges.filter(c => c.label && c.amount > 0).map(c => `<div class="totals-row"><span class="lbl">${c.label}</span><span class="val" style="color:#d97706;">+ &#8377;${Number(c.amount).toLocaleString('en-IN')}</span></div>`).join('')}
     <div class="totals-row"><span class="lbl">GST (5%)</span><span class="val">&#8377;${tax.toLocaleString('en-IN')}</span></div>
     <div class="totals-row grand"><span class="lbl">Grand Total</span><span class="val">&#8377;${total.toLocaleString('en-IN')}</span></div>
   </div>
@@ -443,8 +446,14 @@ function OrderDetailContent() {
                 <span className="text-gray-600 dark:text-gray-400 font-medium">Subtotal</span>
                 <span className="font-semibold text-gray-900 dark:text-white">₹{order.pricing?.subtotal?.toLocaleString() || '0'}</span>
               </div>
+              {order.extraCharges?.filter(c => c.label && c.amount > 0).map((c, i) => (
+                <div key={i} className="flex justify-between text-sm sm:text-base">
+                  <span className="text-orange-600 dark:text-orange-400 font-medium">{c.label}</span>
+                  <span className="font-semibold text-orange-600 dark:text-orange-400">+₹{Number(c.amount).toLocaleString()}</span>
+                </div>
+              ))}
               <div className="flex justify-between text-sm sm:text-base">
-                <span className="text-gray-600 dark:text-gray-400 font-medium">Tax</span>
+                <span className="text-gray-600 dark:text-gray-400 font-medium">GST (5%)</span>
                 <span className="font-semibold text-gray-900 dark:text-white">₹{order.pricing?.tax?.toLocaleString() || '0'}</span>
               </div>
               <div className="flex justify-between text-base sm:text-lg lg:text-xl font-bold mt-4 pt-4 border-t-2 border-gray-300 dark:border-gray-600">

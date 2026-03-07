@@ -11,7 +11,7 @@ import { CheckCircle, Loader2, AlertCircle } from 'lucide-react';
  * - Role-agnostic
  * - Parent decides redirect behavior
  */
-export default function SubmitOrder({ onSuccess }) {
+export default function SubmitOrder({ onSuccess, extraCharges = [] }) {
   const router = useRouter();
   const { order, resetOrder } = useOrder();
 
@@ -37,6 +37,7 @@ export default function SubmitOrder({ onSuccess }) {
         : undefined,
         room: order.room || undefined,
         booking: order.booking || undefined,
+        extraCharges: extraCharges.filter(c => c.label && Number(c.amount) > 0),
         items: order.items.map((item) => ({
           menuItem: item.menuItemId,
         variant: item.variant,

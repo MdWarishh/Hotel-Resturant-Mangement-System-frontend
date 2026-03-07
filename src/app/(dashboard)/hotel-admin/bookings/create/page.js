@@ -154,8 +154,9 @@ export default function CreateBookingPage() {
       let hourlyRate = 0;
       
       if (form.useManualPrice && form.manualPrice) {
-        hourlyRate = Number(form.manualPrice);
-        roomCharges = hourlyRate * duration;
+        // Custom price = fixed total, hours se multiply NAHI hoga
+        roomCharges = Number(form.manualPrice);
+        hourlyRate = null; // per hour rate hide karo
       } else {
         hourlyRate = selectedRoom.pricing?.hourlyRate > 0 
           ? selectedRoom.pricing.hourlyRate 
@@ -377,7 +378,9 @@ export default function CreateBookingPage() {
       if (bookingType === 'hourly') {
         bookingData.hours = form.hours;
         if (form.useManualPrice && form.manualPrice) {
+          // Fixed total price bhej rahe — backend hours se multiply na kare
           bookingData.manualHourlyRate = Number(form.manualPrice);
+          bookingData.isFixedPrice = true;
         }
       } else {
         // 🆕 Daily custom price send karo
@@ -854,7 +857,7 @@ export default function CreateBookingPage() {
                             />
                             {form.manualPrice && (
                               <p className="text-sm text-green-700 mt-2 font-medium">
-                                Total: ₹{Number(form.manualPrice) * form.hours} for {form.hours} hour{form.hours > 1 ? 's' : ''}
+                                Fixed Room Charge: ₹{Number(form.manualPrice)} + GST (₹{Math.ceil(Number(form.manualPrice) * 0.05)}) = ₹{Number(form.manualPrice) + Math.ceil(Number(form.manualPrice) * 0.05)}
                               </p>
                             )}
                           </div>
@@ -1040,15 +1043,18 @@ export default function CreateBookingPage() {
                         ? (pricingPreview.duration === 1 ? 'hour' : 'hours')
                         : (pricingPreview.duration === 1 ? 'night' : 'nights')
                       })
-                      {bookingType === 'hourly' && pricingPreview.hourlyRate && (
-                        <span className="block text-xs mt-1">
-                          @ ₹{pricingPreview.hourlyRate}/hour
-                          {pricingPreview.isManualPrice && (
-                            <span className="ml-2 px-2 py-0.5 bg-orange-200 text-orange-900 rounded-full text-xs font-semibold">
-                              CUSTOM
+                      {bookingType === 'hourly' && (
+                        pricingPreview.isManualPrice ? (
+                          <span className="block text-xs mt-1">
+                            <span className="px-2 py-0.5 bg-orange-200 text-orange-900 rounded-full text-xs font-semibold">
+                              FIXED PRICE
                             </span>
-                          )}
-                        </span>
+                          </span>
+                        ) : pricingPreview.hourlyRate ? (
+                          <span className="block text-xs mt-1">
+                            @ ₹{pricingPreview.hourlyRate}/hour
+                          </span>
+                        ) : null
                       )}
                       {bookingType === 'daily' && pricingPreview.isManualPrice && (
                         <span className="block text-xs mt-1">

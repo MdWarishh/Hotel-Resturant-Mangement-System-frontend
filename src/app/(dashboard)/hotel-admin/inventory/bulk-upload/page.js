@@ -213,12 +213,12 @@ export default function InventoryBulkUploadPage() {
               
               <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 mb-6">
                 <div className="flex gap-3">
-                  <Info className="h-5 w-5 text-sky-600 flex-shrink-0 mt-0.5" />
-                  <div className="text-sm text-sky-900">
+                  <Info className="h-5 w-5 text-zinc-800 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-zinc-700">
                     <p className="font-semibold mb-2">Template includes sample data for:</p>
                     <div className="grid grid-cols-2 gap-2 text-sky-800">
                       <div>
-                        <p className="font-medium">🍽️ Restaurant:</p>
+                        <p className="font-medium text-zinc-900">🍽️ Restaurant:</p>
                         <ul className="list-disc list-inside text-xs ml-2 space-y-1">
                           <li>Food items (rice, vegetables)</li>
                           <li>Beverages (milk, drinks)</li>
@@ -240,7 +240,7 @@ export default function InventoryBulkUploadPage() {
               <button
                 onClick={handleDownloadTemplate}
                 disabled={downloading}
-                className="flex items-center gap-3 bg-sky-600 hover:bg-sky-700 text-white font-semibold px-6 py-3 rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-3 text-black backdrop-contrast-150 bg-green-400 hover:bg-green-700 text-zinc-900 font-semibold px-6 py-3 rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {downloading ? (
                   <>
@@ -308,7 +308,7 @@ export default function InventoryBulkUploadPage() {
                   <button
                     onClick={handleUpload}
                     disabled={uploading}
-                    className="flex items-center gap-3 bg-sky-600 hover:bg-sky-700 text-white font-semibold px-8 py-3 rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-sky-600"
+                    className="flex items-center gap-3 bg-green-400 hover:bg-sky-700 text-black font-semibold px-8 py-3 rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-sky-600"
                   >
                     {uploading ? (
                       <>
@@ -317,7 +317,7 @@ export default function InventoryBulkUploadPage() {
                       </>
                     ) : (
                       <>
-                        <Upload className="h-5 w-5" />
+                        <Upload className="text-black h-5 w-5" />
                         Upload & Process
                       </>
                     )}
@@ -352,8 +352,8 @@ export default function InventoryBulkUploadPage() {
             <h2 className="text-2xl font-bold text-gray-900 mb-6">Upload Results</h2>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-              <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              <div className="bg-gray-50 rounded-xl p-5 border border-gray-200">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-gray-600">Total Rows</span>
                   <Package className="h-5 w-5 text-gray-400" />
@@ -361,7 +361,7 @@ export default function InventoryBulkUploadPage() {
                 <p className="text-3xl font-bold text-gray-900">{uploadResult.total}</p>
               </div>
 
-              <div className="bg-emerald-50 rounded-xl p-6 border border-emerald-200">
+              <div className="bg-emerald-50 rounded-xl p-5 border border-emerald-200">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-emerald-600">Successful</span>
                   <CheckCircle2 className="h-5 w-5 text-emerald-600" />
@@ -369,7 +369,16 @@ export default function InventoryBulkUploadPage() {
                 <p className="text-3xl font-bold text-emerald-600">{uploadResult.successCount}</p>
               </div>
 
-              <div className="bg-red-50 rounded-xl p-6 border border-red-200">
+              <div className="bg-amber-50 rounded-xl p-5 border border-amber-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-amber-600">Skipped</span>
+                  <AlertCircle className="h-5 w-5 text-amber-500" />
+                </div>
+                <p className="text-3xl font-bold text-amber-600">{uploadResult.skippedCount || 0}</p>
+                <p className="text-xs text-amber-500 mt-1">already exist</p>
+              </div>
+
+              <div className="bg-red-50 rounded-xl p-5 border border-red-200">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-red-600">Failed</span>
                   <XCircle className="h-5 w-5 text-red-600" />
@@ -393,6 +402,25 @@ export default function InventoryBulkUploadPage() {
                         : 'Please review errors below and fix them.'}
                     </p>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Skipped (Duplicate) List */}
+            {(uploadResult.skippedCount || 0) > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-4">
+                <div className="flex items-center gap-3 mb-4">
+                  <AlertCircle className="h-6 w-6 text-amber-600" />
+                  <h3 className="font-semibold text-amber-900">
+                    {uploadResult.skippedCount} row{uploadResult.skippedCount > 1 ? 's' : ''} skipped — already exist in inventory
+                  </h3>
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {uploadResult.skipped.map((item, index) => (
+                    <div key={index} className="bg-white rounded-lg p-3 border border-amber-200 text-sm text-amber-800">
+                      <span className="font-medium">Row {item.row}:</span> {item.reason}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

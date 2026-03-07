@@ -14,6 +14,7 @@ export default function CartSection({ onOrderSuccess, requirePayment = true }) {
   const [showPayment, setShowPayment] = useState(false);
   const [discountCode, setDiscountCode] = useState('');
   const [discountError, setDiscountError] = useState(null);
+  const [extraCharges, setExtraCharges] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [createdOrder, setCreatedOrder] = useState(null);
   const { user } = useAuth();
@@ -175,12 +176,73 @@ const handlePaymentSuccess = (updatedOrder) => {
           {discountError && <p className="text-red-600 text-sm mt-1">{discountError}</p>}
         </div>
 
+        {/* Extra Charges */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Extra Charges</label>
+            <button
+              onClick={() => setExtraCharges(prev => [...prev, { label: '', amount: '' }])}
+              className="text-xs px-3 py-1 bg-[rgb(0,173,181)]/10 text-[rgb(0,173,181)] border border-[rgb(0,173,181)]/30 rounded-lg hover:bg-[rgb(0,173,181)]/20 font-medium"
+            >
+              + Add Charge
+            </button>
+          </div>
+          {extraCharges.length === 0 && (
+            <p className="text-xs text-gray-400 italic">No extra charges added</p>
+          )}
+          {extraCharges.map((charge, i) => (
+            <div key={i} className="flex gap-2 mb-2 items-center">
+              <input
+                type="text"
+                placeholder="Label (e.g. Service)" 
+                value={charge.label}
+                onChange={e => {
+                  const updated = [...extraCharges];
+                  updated[i] = { ...updated[i], label: e.target.value };
+                  setExtraCharges(updated);
+                }}
+                className="flex-1 p-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:border-[rgb(0,173,181)]"
+              />
+              <input
+                type="number"
+                placeholder="₹"
+                value={charge.amount}
+                min="0"
+                onChange={e => {
+                  const updated = [...extraCharges];
+                  updated[i] = { ...updated[i], amount: e.target.value };
+                  setExtraCharges(updated);
+                }}
+                className="w-20 p-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:border-[rgb(0,173,181)]"
+              />
+              <button
+                onClick={() => setExtraCharges(prev => prev.filter((_, idx) => idx !== i))}
+                className="text-red-400 hover:text-red-600 text-lg font-bold px-1"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+
         {/* Totals */}
+        {(() => {
+          const extraTotal = extraCharges.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+          const base = pricing.subtotal || 0;
+          const gst = Math.ceil((base + extraTotal) * 0.05);
+          const grandTotal = base + extraTotal + gst - (pricing.discount || 0);
+          return (
         <div className="space-y-3 mb-6">
           <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
             <span>Subtotal</span>
-            <span>₹{pricing.subtotal?.toFixed(2)}</span>
+            <span>₹{(pricing.subtotal || 0).toFixed(2)}</span>
           </div>
+          {extraTotal > 0 && extraCharges.filter(c => c.label && Number(c.amount) > 0).map((c, i) => (
+            <div key={i} className="flex justify-between text-sm text-orange-600">
+              <span>{c.label}</span>
+              <span>+₹{Number(c.amount).toFixed(2)}</span>
+            </div>
+          ))}
           {pricing.discount > 0 && (
             <div className="flex justify-between text-sm text-green-600">
               <span>Discount</span>
@@ -189,19 +251,22 @@ const handlePaymentSuccess = (updatedOrder) => {
           )}
           <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
             <span>GST (5%)</span>
-            <span>₹{pricing.tax?.toFixed(2)}</span>
+            <span>₹{gst.toFixed(2)}</span>
           </div>
           <div className="flex justify-between text-lg font-bold text-gray-900 dark:text-white border-t pt-3">
             <span>Total</span>
-            <span className="text-[rgb(0,173,181)]">₹{pricing.total?.toFixed(2)}</span>
+            <span className="text-[rgb(0,173,181)]">₹{grandTotal.toFixed(2)}</span>
           </div>
         </div>
+          );
+        })()}
 
         {/* Submit & Payment */}
  <div className="space-y-4">
   {/* STEP 1: PLACE ORDER */}
   {!createdOrder && (
     <SubmitOrder
+      extraCharges={extraCharges.filter(c => c.label && Number(c.amount) > 0)}
       onSuccess={(savedOrder) => {
         setCreatedOrder(savedOrder);
         if (requirePayment) {

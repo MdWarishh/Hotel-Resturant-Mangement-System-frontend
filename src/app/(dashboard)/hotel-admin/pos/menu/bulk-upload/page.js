@@ -340,16 +340,16 @@ export default function MenuBulkUploadPage() {
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Upload Results</h2>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-              <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-6 border border-gray-200 dark:border-gray-600">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-5 border border-gray-200 dark:border-gray-600">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Rows</span>
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Total</span>
                   <UtensilsCrossed className="h-5 w-5 text-gray-400" />
                 </div>
                 <p className="text-3xl font-bold text-gray-900 dark:text-white">{uploadResult.total}</p>
               </div>
 
-              <div className="bg-emerald-50 dark:bg-emerald-900/30 rounded-xl p-6 border border-emerald-200 dark:border-emerald-700">
+              <div className="bg-emerald-50 dark:bg-emerald-900/30 rounded-xl p-5 border border-emerald-200 dark:border-emerald-700">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">Successful</span>
                   <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
@@ -357,7 +357,7 @@ export default function MenuBulkUploadPage() {
                 <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{uploadResult.successCount}</p>
               </div>
 
-              <div className="bg-blue-50 dark:bg-blue-900/30 rounded-xl p-6 border border-blue-200 dark:border-blue-700">
+              <div className="bg-blue-50 dark:bg-blue-900/30 rounded-xl p-5 border border-blue-200 dark:border-blue-700">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-blue-600 dark:text-blue-400">Categories</span>
                   <Layers className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -365,7 +365,16 @@ export default function MenuBulkUploadPage() {
                 <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{uploadResult.categoriesCreated}</p>
               </div>
 
-              <div className="bg-red-50 dark:bg-red-900/30 rounded-xl p-6 border border-red-200 dark:border-red-700">
+              <div className="bg-amber-50 dark:bg-amber-900/30 rounded-xl p-5 border border-amber-200 dark:border-amber-700">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-amber-600 dark:text-amber-400">Skipped</span>
+                  <AlertCircle className="h-5 w-5 text-amber-500 dark:text-amber-400" />
+                </div>
+                <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">{uploadResult.skippedCount || 0}</p>
+                <p className="text-xs text-amber-500 dark:text-amber-400 mt-1">already exist</p>
+              </div>
+
+              <div className="bg-red-50 dark:bg-red-900/30 rounded-xl p-5 border border-red-200 dark:border-red-700">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-red-600 dark:text-red-400">Failed</span>
                   <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
@@ -391,6 +400,25 @@ export default function MenuBulkUploadPage() {
                         : 'Please review errors below and fix them.'}
                     </p>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Skipped (Duplicate) List */}
+            {(uploadResult.skippedCount || 0) > 0 && (
+              <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-xl p-6 mb-4">
+                <div className="flex items-center gap-3 mb-4">
+                  <AlertCircle className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+                  <h3 className="font-semibold text-amber-900 dark:text-amber-100">
+                    {uploadResult.skippedCount} item{uploadResult.skippedCount > 1 ? 's' : ''} skipped — already exist in menu
+                  </h3>
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {uploadResult.skipped.map((item, index) => (
+                    <div key={index} className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-amber-200 dark:border-amber-700 text-sm text-amber-800 dark:text-amber-200">
+                      <span className="font-medium">Row {item.row}:</span> {item.reason}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
