@@ -8,7 +8,8 @@ import {
   Plus, Loader2, Search, RefreshCw, Download, X, 
   ChevronLeft, ChevronRight, Calendar, 
   FileText,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Trash2
 } from 'lucide-react';
 
 export default function BookingsPage() {
@@ -129,6 +130,19 @@ export default function BookingsPage() {
     } catch(e) {
       alert(e.message);
     } 
+  };
+
+  const handleDelete = async (id, bookingNumber) => {
+    if (!confirm(`Delete booking ${bookingNumber}? This cannot be undone.`)) return;
+    setActionLoading(id);
+    try {
+      await apiRequest(`/bookings/${id}`, { method: 'DELETE' });
+      fetchBookings();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const clearFilters = () => {
@@ -441,6 +455,16 @@ export default function BookingsPage() {
                           >
                             View
                           </Link>
+                          <button
+                            onClick={() => handleDelete(b._id, b.bookingNumber)}
+                            disabled={actionLoading === b._id}
+                            className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition disabled:opacity-50"
+                            title="Delete Booking"
+                          >
+                            {actionLoading === b._id
+                              ? <Loader2 className="h-4 w-4 animate-spin" />
+                              : <Trash2 className="h-4 w-4" />}
+                          </button>
                         </div>
                       </td>
                     </tr>

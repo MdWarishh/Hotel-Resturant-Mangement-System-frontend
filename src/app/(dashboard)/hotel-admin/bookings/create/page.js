@@ -118,21 +118,23 @@ export default function CreateBookingPage() {
 
       const nights = Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
       
-      // 🆕 Custom daily price support
+      // Custom daily price = fixed (nights se multiply nahi)
       let roomCharges;
       if (form.useManualDailyPrice && form.manualDailyPrice) {
-        roomCharges = Number(form.manualDailyPrice);
+        roomCharges = Number(form.manualDailyPrice); // Fixed as-is
       } else {
         roomCharges = selectedRoom.pricing.basePrice * nights;
       }
 
+      // Extra guest charges — only for non-manual price
       let extraCharges = 0;
-      const extraAdults = Math.max(0, Number(form.adults) - (selectedRoom.capacity?.adults || 0));
-      extraCharges += extraAdults * (selectedRoom.pricing.extraAdultCharge || 0) * nights;
-      const extraChildren = Math.max(0, Number(form.children) - (selectedRoom.capacity?.children || 0));
-      extraCharges += extraChildren * (selectedRoom.pricing.extraChildCharge || 0) * nights;
+      if (!form.useManualDailyPrice) {
+        const extraAdults = Math.max(0, Number(form.adults) - (selectedRoom.capacity?.adults || 0));
+        extraCharges += extraAdults * (selectedRoom.pricing.extraAdultCharge || 0) * nights;
+        const extraChildren = Math.max(0, Number(form.children) - (selectedRoom.capacity?.children || 0));
+        extraCharges += extraChildren * (selectedRoom.pricing.extraChildCharge || 0) * nights;
+      }
 
-      // 🆕 customCharges add
       const subtotal = roomCharges + extraCharges + customChargesTotal;
       const tax = Math.ceil(subtotal * 0.05);
       const total = subtotal + tax;
@@ -154,9 +156,9 @@ export default function CreateBookingPage() {
       let hourlyRate = 0;
       
       if (form.useManualPrice && form.manualPrice) {
-        // Custom price = fixed total, hours se multiply NAHI hoga
+        // Custom price = fixed as-is (hours se multiply nahi)
         roomCharges = Number(form.manualPrice);
-        hourlyRate = null; // per hour rate hide karo
+        hourlyRate = null;
       } else {
         hourlyRate = selectedRoom.pricing?.hourlyRate > 0 
           ? selectedRoom.pricing.hourlyRate 
@@ -164,8 +166,7 @@ export default function CreateBookingPage() {
         roomCharges = hourlyRate * duration;
       }
       
-      const extraCharges = 0;
-      // 🆕 customCharges add for hourly too
+      const extraCharges = 0; // hourly me extra guest charge nahi
       const subtotal = roomCharges + extraCharges + customChargesTotal;
       const tax = Math.ceil(subtotal * 0.05);
       const total = subtotal + tax;
@@ -385,7 +386,9 @@ export default function CreateBookingPage() {
       } else {
         // 🆕 Daily custom price send karo
         if (form.useManualDailyPrice && form.manualDailyPrice) {
+          // Fixed price — backend multiply na kare
           bookingData.manualDailyRate = Number(form.manualDailyPrice);
+          bookingData.isFixedPrice = true;
         }
       }
 
@@ -765,9 +768,9 @@ export default function CreateBookingPage() {
                               className="text-black w-full px-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200 font-semibold text-lg"
                               required
                             />
-                            {form.manualDailyPrice && form.checkInDate && form.checkOutDate && (
+                            {form.manualDailyPrice && (
                               <p className="text-sm text-green-700 mt-2 font-medium">
-                                Total Room: ₹{(Number(form.manualDailyPrice) * Math.ceil((new Date(form.checkOutDate) - new Date(form.checkInDate)) / 86400000)).toLocaleString()}
+                                ✓ This is the fixed room charge (GST will be added on top)
                               </p>
                             )}
                           </div>
