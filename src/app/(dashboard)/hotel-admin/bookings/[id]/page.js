@@ -2,12 +2,19 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { 
-  ArrowLeft, User, Users, Phone, Mail, DoorOpen, Calendar, CreditCard, 
+import {
+  ArrowLeft, User, Users, Phone, Mail, DoorOpen, Calendar, CreditCard,
   Download, LogOut, Loader2, X, Clock, UserCheck, Globe, Image as ImageIcon,
-  Tag
+  Tag, CheckCircle2, Banknote, Smartphone, AlertCircle
 } from 'lucide-react';
 import { apiRequest } from '@/services/api';
+
+// ── Payment method config ──
+const PAYMENT_METHOD_CONFIG = {
+  cash:  { label: 'Cash',  icon: '💵', color: 'text-green-700',  bg: 'bg-green-50',  border: 'border-green-200' },
+  upi:   { label: 'UPI',   icon: '📱', color: 'text-blue-700',   bg: 'bg-blue-50',   border: 'border-blue-200'  },
+  card:  { label: 'Card',  icon: '💳', color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200' },
+};
 
 export default function BookingDetailsPage() {
   const { id } = useParams();
@@ -17,8 +24,10 @@ export default function BookingDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [showPayment, setShowPayment] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [selectedPayMethod, setSelectedPayMethod] = useState('');
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [showIdProofModal, setShowIdProofModal] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
 
   useEffect(() => {
     const fetchBooking = async () => {
@@ -40,13 +49,37 @@ export default function BookingDetailsPage() {
 
   const due = (booking?.pricing?.total || 0) - (booking?.advancePayment || 0);
 
-  // 🆕 customCharges total
   const customChargesTotal = (booking?.pricing?.customCharges || [])
     .reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
 
+  // ── Payment update — method select karo → full paid ──
   const handlePaymentUpdate = async () => {
+    setPaymentError('');
+
+    // Agar method selected hai → full payment
+    if (selectedPayMethod) {
+      setPaymentLoading(true);
+      try {
+        await apiRequest(`/bookings/${booking._id}/payment`, {
+          method: 'POST',
+          body: JSON.stringify({ paymentMethod: selectedPayMethod }),
+        });
+        setShowPayment(false);
+        setSelectedPayMethod('');
+        setPaymentAmount('');
+        const res = await apiRequest(`/bookings/${id}`);
+        setBooking(res.data.booking);
+      } catch (err) {
+        setPaymentError(err.message || 'Payment update failed');
+      } finally {
+        setPaymentLoading(false);
+      }
+      return;
+    }
+
+    // Manual amount
     if (!paymentAmount || Number(paymentAmount) <= 0) {
-      alert('Enter valid amount');
+      setPaymentError('Enter a valid amount or select a payment method');
       return;
     }
     setPaymentLoading(true);
@@ -60,7 +93,7 @@ export default function BookingDetailsPage() {
       const res = await apiRequest(`/bookings/${id}`);
       setBooking(res.data.booking);
     } catch (err) {
-      alert(err.message || 'Payment update failed');
+      setPaymentError(err.message || 'Payment update failed');
     } finally {
       setPaymentLoading(false);
     }
@@ -77,6 +110,7 @@ export default function BookingDetailsPage() {
     }
   };
 
+  // ── PDF Invoice ──────────────────────────────────────────────────────────
   const handleDownloadPDF = () => {
     if (!booking) return;
 
@@ -107,7 +141,6 @@ export default function BookingDetailsPage() {
     const advancePaid = booking.advancePayment || 0;
     const dueAmount = total - advancePaid;
 
-    // 🆕 customCharges for PDF
     const customChargesList = booking.pricing?.customCharges || [];
     const customChargesSum = customChargesList.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
 
@@ -116,7 +149,11 @@ export default function BookingDetailsPage() {
     const paidBg = payStatus === 'paid' ? '#d1fae5' : payStatus === 'partially_paid' ? '#fef3c7' : '#fee2e2';
     const payLabel = payStatus === 'paid' ? 'PAID' : payStatus === 'partially_paid' ? 'PARTIALLY PAID' : 'PENDING';
 
-    // 🆕 Build customCharges rows for table
+    // ✅ Payment method for invoice
+    const payMethodRaw = booking.paymentMethod;
+    const payMethodConfig = payMethodRaw ? PAYMENT_METHOD_CONFIG[payMethodRaw] : null;
+    const payMethodLabel = payMethodConfig ? `${payMethodConfig.icon} ${payMethodConfig.label}` : null;
+
     const customChargesTableRows = customChargesList.map(c => `
     <tr>
       <td style="padding-left:20px;color:#7c3aed;">${c.label}</td>
@@ -124,7 +161,6 @@ export default function BookingDetailsPage() {
       <td>&#8377;${Number(c.amount).toLocaleString('en-IN')}</td>
     </tr>`).join('');
 
-    // 🆕 Build customCharges rows for totals box
     const customChargesTotalsRows = customChargesList.map(c => `
     <div class="totals-row">
       <span class="lbl" style="color:#7c3aed;">↳ ${c.label}</span>
@@ -160,6 +196,9 @@ export default function BookingDetailsPage() {
   .info-label { color:#666; font-weight:500; min-width:110px; }
   .info-value { color:#111; font-weight:700; }
   .badge { display:inline-block; padding:2px 10px; border-radius:2px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; background:${paidBg}; color:${paidColor}; border:1px solid ${paidColor}; }
+
+  /* ✅ Payment method badge in invoice */
+  .pay-method-badge { display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:800; background:#f0fdf4; color:#166534; border:1.5px solid #166534; margin-top:4px; }
 
   table { width:100%; border-collapse:collapse; margin-bottom:20px; border:1.5px solid #111; }
   thead tr { background:#111; }
@@ -240,6 +279,11 @@ export default function BookingDetailsPage() {
     <div class="info-row"><span class="info-label">Check-out</span><span class="info-value">${actualCheckOut || checkOut}</span></div>
     <div class="info-row"><span class="info-label">Status</span><span class="info-value">${(booking.status || '').replace('_', ' ').toUpperCase()}</span></div>
     <div class="info-row"><span class="info-label">Payment</span><span class="badge">${payLabel}</span></div>
+    ${payMethodLabel ? `
+    <div class="info-row" style="margin-top:6px;">
+      <span class="info-label">Pay Method</span>
+      <span class="pay-method-badge">${payMethodLabel}</span>
+    </div>` : ''}
   </div>
 </div>
 
@@ -291,6 +335,11 @@ export default function BookingDetailsPage() {
       <span class="lbl" style="color:#166534;font-weight:700;">Advance Paid</span>
       <span class="val" style="color:#166534;">&#8377;${advancePaid.toLocaleString('en-IN')}</span>
     </div>
+    ${payMethodLabel ? `
+    <div class="totals-row" style="background:#f0fdf4;">
+      <span class="lbl" style="color:#166534;font-weight:600;">Payment Method</span>
+      <span class="val" style="color:#166534;">${payMethodLabel}</span>
+    </div>` : ''}
     ${dueAmount > 0 ? `<div class="totals-row due-row"><span class="lbl">Balance Due</span><span class="val">&#8377;${dueAmount.toLocaleString('en-IN')}</span></div>` : ''}
   </div>
 </div>
@@ -322,21 +371,19 @@ export default function BookingDetailsPage() {
   }
 
   if (!booking) {
-    return (
-      <div className="text-center py-20 text-red-600">
-        Booking not found or failed to load
-      </div>
-    );
+    return <div className="text-center py-20 text-red-600">Booking not found or failed to load</div>;
   }
 
   const idProofImage = booking.guest?.idProof?.image?.url;
+  const pmConfig = booking.paymentMethod ? PAYMENT_METHOD_CONFIG[booking.paymentMethod] : null;
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 p-4">
+
       {/* Header */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-wrap">
             <h2 className="text-4xl font-bold text-teal-600">#{booking.bookingNumber}</h2>
             <StatusBadge status={booking.status} />
           </div>
@@ -347,6 +394,14 @@ export default function BookingDetailsPage() {
             <Globe className="h-4 w-4 text-teal-600" />
             Booked via: <span className="font-medium text-gray-900">{booking.source || 'Direct'}</span>
           </p>
+          {/* ✅ Payment method badge in header */}
+          {pmConfig && (
+            <div className={`mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-xl border font-semibold text-sm ${pmConfig.bg} ${pmConfig.border} ${pmConfig.color}`}>
+              <span className="text-lg">{pmConfig.icon}</span>
+              Paid via {pmConfig.label}
+              <CheckCircle2 className="h-4 w-4" />
+            </div>
+          )}
         </div>
 
         <div className="flex gap-4">
@@ -380,7 +435,7 @@ export default function BookingDetailsPage() {
                 <div className="space-y-2">
                   <Info
                     label="ID Proof"
-                    value={`${booking.guest.idProof.type.toUpperCase()} - ${booking.guest.idProof.number}`}
+                    value={`${booking.guest.idProof.type?.toUpperCase()} - ${booking.guest.idProof.number || ''}`}
                   />
                   {idProofImage ? (
                     <div className="mt-3">
@@ -389,11 +444,7 @@ export default function BookingDetailsPage() {
                         className="relative w-64 h-40 rounded-xl overflow-hidden border border-gray-300 shadow-md cursor-pointer group"
                         onClick={() => setShowIdProofModal(true)}
                       >
-                        <img
-                          src={idProofImage}
-                          alt={`${booking.guest.idProof.type} document`}
-                          className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                        />
+                        <img src={idProofImage} alt="ID Proof" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                           <div className="text-white text-sm font-medium flex items-center gap-2">
                             <ImageIcon className="h-5 w-5" /> View Full Size
@@ -418,9 +469,7 @@ export default function BookingDetailsPage() {
                 <div className="space-y-3">
                   {booking.additionalGuests.map((g, i) => (
                     <div key={i} className="flex items-center gap-4 p-4 bg-gray-50 border border-gray-200 rounded-xl">
-                      <div className="w-8 h-8 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-sm flex-shrink-0">
-                        {i + 2}
-                      </div>
+                      <div className="w-8 h-8 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center font-bold text-sm flex-shrink-0">{i + 2}</div>
                       <div>
                         <p className="font-medium text-gray-900">{g.name}</p>
                         {g.phone && <p className="text-sm text-gray-500 flex items-center gap-1"><Phone className="h-3 w-3" /> {g.phone}</p>}
@@ -452,45 +501,20 @@ export default function BookingDetailsPage() {
               <div className="space-y-4">
                 <Info label="Planned Check-in" value={new Date(booking.dates.checkIn).toLocaleString('en-IN')} />
                 <Info label="Planned Check-out" value={new Date(booking.dates.checkOut).toLocaleString('en-IN')} />
-
                 {booking.dates.actualCheckIn && (
-                  <Info
-                    label="Actual Check-in"
-                    value={
-                      <>
-                        {new Date(booking.dates.actualCheckIn).toLocaleString('en-IN')}
-                        {booking.checkedInBy?.name && <span className="text-teal-600 ml-2">by {booking.checkedInBy.name}</span>}
-                      </>
-                    }
-                  />
+                  <Info label="Actual Check-in" value={<>{new Date(booking.dates.actualCheckIn).toLocaleString('en-IN')}{booking.checkedInBy?.name && <span className="text-teal-600 ml-2">by {booking.checkedInBy.name}</span>}</>} />
                 )}
-
                 {booking.dates.actualCheckOut && (
-                  <Info
-                    label="Actual Check-out"
-                    value={
-                      <>
-                        {new Date(booking.dates.actualCheckOut).toLocaleString('en-IN')}
-                        {booking.checkedOutBy?.name && <span className="text-teal-600 ml-2">by {booking.checkedOutBy.name}</span>}
-                      </>
-                    }
-                  />
+                  <Info label="Actual Check-out" value={<>{new Date(booking.dates.actualCheckOut).toLocaleString('en-IN')}{booking.checkedOutBy?.name && <span className="text-teal-600 ml-2">by {booking.checkedOutBy.name}</span>}</>} />
                 )}
-
-                <Info
-                  label="Created By"
-                  value={booking.createdBy?.name || 'System'}
-                  icon={<UserCheck className="h-4 w-4" />}
-                />
+                <Info label="Created By" value={booking.createdBy?.name || 'System'} icon={<UserCheck className="h-4 w-4" />} />
               </div>
             </div>
           </Section>
 
-          {/* 🆕 Pricing Breakdown — customCharges bhi show hoga */}
+          {/* Pricing */}
           <Section title="Pricing Details" icon={<CreditCard className="h-6 w-6" />}>
             <div className="text-black space-y-4 text-lg">
-
-              {/* Room Charges */}
               <div className="flex justify-between items-center">
                 <span className="flex items-center gap-2">
                   Room Charges
@@ -504,7 +528,6 @@ export default function BookingDetailsPage() {
                 <span className="font-medium">₹{booking.pricing?.roomCharges || 0}</span>
               </div>
 
-              {/* Extra Guest Charges */}
               {booking.pricing?.extraCharges > 0 && (
                 <div className="flex justify-between text-teal-600">
                   <span>Extra Guests</span>
@@ -512,7 +535,6 @@ export default function BookingDetailsPage() {
                 </div>
               )}
 
-              {/* 🆕 Custom Charges — label wise */}
               {(booking.pricing?.customCharges || []).length > 0 && (
                 <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 space-y-2">
                   <p className="text-sm font-semibold text-purple-700 uppercase tracking-wide flex items-center gap-2 mb-3">
@@ -531,20 +553,17 @@ export default function BookingDetailsPage() {
                 </div>
               )}
 
-              {/* GST */}
               <div className="flex justify-between">
                 <span>GST (5%)</span>
                 <span>₹{booking.pricing?.tax || 0}</span>
               </div>
 
-              {/* Total */}
               <div className="border-t pt-4 flex justify-between text-xl font-bold">
                 <span>Total Amount</span>
                 <span className="text-teal-600">₹{booking.pricing?.total || 0}</span>
               </div>
             </div>
           </Section>
-
         </div>
 
         {/* Right - Actions */}
@@ -552,6 +571,15 @@ export default function BookingDetailsPage() {
           <Section title="Payment Status" icon={<CreditCard className="h-6 w-6" />}>
             <div className="text-center">
               <PaymentBadge status={booking.paymentStatus} />
+
+              {/* ✅ Payment method display */}
+              {pmConfig && (
+                <div className={`mt-4 mx-auto inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl border font-semibold text-sm ${pmConfig.bg} ${pmConfig.border} ${pmConfig.color}`}>
+                  <span className="text-xl">{pmConfig.icon}</span>
+                  {pmConfig.label}
+                </div>
+              )}
+
               <div className="mt-6 text-4xl font-bold text-gray-900">₹{booking.advancePayment || 0}</div>
               <p className="text-sm text-gray-500 mt-2">Paid Amount</p>
 
@@ -563,13 +591,13 @@ export default function BookingDetailsPage() {
               )}
 
               <button
-                onClick={() => setShowPayment(true)}
+                onClick={() => { setShowPayment(true); setPaymentError(''); setSelectedPayMethod(''); setPaymentAmount(''); }}
                 className="mt-6 w-full bg-teal-600 text-white py-4 rounded-2xl font-semibold hover:bg-teal-700"
               >
                 Update Payment
               </button>
 
-              {booking.status === 'checked_in' && booking.paymentStatus === 'paid' && (
+              {booking.status === 'checked_in' && (
                 <button
                   onClick={handleCheckout}
                   className="mt-4 w-full bg-emerald-600 text-white py-4 rounded-2xl font-semibold hover:bg-emerald-700 flex items-center justify-center gap-2"
@@ -582,23 +610,68 @@ export default function BookingDetailsPage() {
         </div>
       </div>
 
-      {/* Payment Modal */}
+      {/* ✅ Updated Payment Modal — method select + amount */}
       {showPayment && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-semibold text-black">Add Payment</h3>
+              <h3 className="text-2xl font-semibold text-black">Update Payment</h3>
               <button onClick={() => setShowPayment(false)}><X className="h-6 w-6" /></button>
             </div>
-            <input
-              type="number"
-              value={paymentAmount}
-              onChange={(e) => setPaymentAmount(e.target.value)}
-              placeholder="Enter amount"
-              className="w-full text-4xl font-bold p-6 border border-gray-200 rounded-2xl focus:border-teal-600 outline-none text-black"
-              autoFocus
-            />
-            <div className="flex gap-4 mt-8">
+
+            {/* Payment Method Buttons */}
+            <p className="text-sm font-semibold text-gray-700 mb-3">Select Payment Method (marks full payment)</p>
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              {Object.entries(PAYMENT_METHOD_CONFIG).map(([key, cfg]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => { setSelectedPayMethod(prev => prev === key ? '' : key); setPaymentAmount(''); }}
+                  className={`flex flex-col items-center gap-1.5 py-4 rounded-2xl border-2 font-semibold text-sm transition-all ${
+                    selectedPayMethod === key
+                      ? `${cfg.bg} ${cfg.border} ${cfg.color}`
+                      : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                  }`}
+                >
+                  <span className="text-2xl">{cfg.icon}</span>
+                  {cfg.label}
+                </button>
+              ))}
+            </div>
+
+            {selectedPayMethod && (
+              <div className="mb-4 flex items-center gap-2 text-green-700 bg-green-50 border border-green-200 px-4 py-3 rounded-xl text-sm font-medium">
+                <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                Full amount ₹{booking.pricing?.total || 0} will be marked as PAID via {PAYMENT_METHOD_CONFIG[selectedPayMethod].label}
+              </div>
+            )}
+
+            {/* OR divider */}
+            {!selectedPayMethod && (
+              <>
+                <div className="flex items-center gap-3 my-4">
+                  <div className="flex-1 h-px bg-gray-200" />
+                  <span className="text-xs text-gray-400 font-medium">OR enter partial amount</span>
+                  <div className="flex-1 h-px bg-gray-200" />
+                </div>
+                <input
+                  type="number"
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  placeholder="Enter partial amount"
+                  className="w-full text-3xl font-bold p-5 border border-gray-200 rounded-2xl focus:border-teal-600 outline-none text-black"
+                  autoFocus
+                />
+              </>
+            )}
+
+            {paymentError && (
+              <div className="mt-3 flex items-center gap-2 text-red-600 text-sm">
+                <AlertCircle className="h-4 w-4 flex-shrink-0" /> {paymentError}
+              </div>
+            )}
+
+            <div className="flex gap-4 mt-6">
               <button
                 onClick={() => setShowPayment(false)}
                 className="flex-1 py-4 border border-gray-300 rounded-2xl font-medium text-black"
@@ -607,10 +680,10 @@ export default function BookingDetailsPage() {
               </button>
               <button
                 onClick={handlePaymentUpdate}
-                disabled={paymentLoading || !paymentAmount}
-                className="flex-1 bg-teal-600 text-black py-4 rounded-2xl font-semibold hover:bg-teal-700 disabled:opacity-90"
+                disabled={paymentLoading || (!selectedPayMethod && !paymentAmount)}
+                className="flex-1 bg-teal-600 text-white py-4 rounded-2xl font-semibold hover:bg-teal-700 disabled:opacity-50"
               >
-                {paymentLoading ? 'Saving...' : 'Save Payment'}
+                {paymentLoading ? 'Saving...' : 'Confirm Payment'}
               </button>
             </div>
           </div>
@@ -619,10 +692,7 @@ export default function BookingDetailsPage() {
 
       {/* ID Proof Modal */}
       {showIdProofModal && idProofImage && (
-        <div
-          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
-          onClick={() => setShowIdProofModal(false)}
-        >
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setShowIdProofModal(false)}>
           <div className="relative max-w-4xl max-h-[90vh] w-full" onClick={e => e.stopPropagation()}>
             <button
               className="absolute -top-12 right-0 text-white bg-gray-800/50 p-3 rounded-full hover:bg-gray-700"
@@ -630,11 +700,7 @@ export default function BookingDetailsPage() {
             >
               <X className="h-6 w-6" />
             </button>
-            <img
-              src={idProofImage}
-              alt="ID Proof Full Size"
-              className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl"
-            />
+            <img src={idProofImage} alt="ID Proof Full Size" className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl" />
           </div>
         </div>
       )}
@@ -658,8 +724,7 @@ function Info({ label, value, icon }) {
   return (
     <div>
       <div className="text-xs uppercase tracking-widest text-gray-500 mb-2 flex items-center gap-2">
-        {icon}
-        {label}
+        {icon}{label}
       </div>
       <div className="font-medium text-gray-900 text-lg">{value || '—'}</div>
     </div>

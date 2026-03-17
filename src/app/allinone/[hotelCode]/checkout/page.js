@@ -2,22 +2,54 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
-import { 
-  placePublicOrder, 
-  getAvailableTables, 
+import {
+  placePublicOrder,
+  getAvailableTables,
   getAvailableRooms,
-  formatPrice 
+  formatPrice,
 } from '@/services/allinonApi';
 import Image from 'next/image';
+
+// ─── Helper: calculate charge from hotel settings ──────────────────────────
+
+function calcDeliveryCharge(settings, subtotal, orderType) {
+  if (orderType !== 'delivery') return 0;
+  if (!settings?.deliveryEnabled) return 0;
+
+  if (settings.deliveryChargeType === 'slab') {
+    const slab = (settings.deliverySlabs || []).find(
+      (s) => subtotal >= s.minOrder && (s.maxOrder === null || subtotal <= s.maxOrder)
+    );
+    return slab ? slab.charge : 0;
+  }
+
+  return settings.deliveryCharge || 0;
+}
+
+function calcPackagingCharge(settings, subtotal, orderType) {
+  if (!settings?.packagingEnabled) return 0;
+  if (!(settings.packagingApplicableOn || []).includes(orderType)) return 0;
+
+  if (settings.packagingChargeType === 'slab') {
+    const slab = (settings.packagingSlabs || []).find(
+      (s) => subtotal >= s.minOrder && (s.maxOrder === null || subtotal <= s.maxOrder)
+    );
+    return slab ? slab.charge : 0;
+  }
+
+  return settings.packagingCharge || 0;
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────
 
 export default function CheckoutPage() {
   const params = useParams();
   const router = useRouter();
   const hotelCode = params.hotelCode;
-  
+
   const { cart, getCartTotals, clearCart } = useCart();
 
   // Form State
@@ -36,47 +68,58 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(false);
   const [loadingResources, setLoadingResources] = useState(false);
   const [error, setError] = useState('');
-  const [hotelDeliveryCharge, setHotelDeliveryCharge] = useState(0);
   const [isOrderPlaced, setIsOrderPlaced] = useState(false);
 
-  // ✅ State ke BAAD — orderType aur hotelDeliveryCharge already defined hain ab
-  const deliveryCharge = orderType === 'delivery' ? hotelDeliveryCharge : 0;
-  const { subtotal, tax, delivery, total } = getCartTotals(deliveryCharge);
+  // ✅ Hotel settings (full object — delivery + packaging)
+  const [hotelSettings, setHotelSettings] = useState(null);
 
-  // Redirect if cart is empty (BUT NOT if order was just placed)
+  // ─── Cart totals (raw subtotal + tax) ──
+  const { subtotal, tax: rawTax } = getCartTotals(0); // pass 0, we'll add charges manually
+
+  // ─── Auto-calculate charges from hotel settings ──
+  const deliveryCharge = useMemo(
+    () => calcDeliveryCharge(hotelSettings, subtotal, orderType),
+    [hotelSettings, subtotal, orderType]
+  );
+
+  const packagingCharge = useMemo(
+    () => calcPackagingCharge(hotelSettings, subtotal, orderType),
+    [hotelSettings, subtotal, orderType]
+  );
+
+  const taxRate = hotelSettings?.taxRate || 5;
+  const tax = Math.ceil(((subtotal + packagingCharge) * taxRate) / 100);
+  const total = subtotal + packagingCharge + tax + deliveryCharge;
+
+  // ─── Redirect if cart empty ──
   useEffect(() => {
     if (cart.length === 0 && !isOrderPlaced) {
       router.push(`/allinone/${hotelCode}`);
     }
   }, [cart, hotelCode, router, isOrderPlaced]);
 
-  // Fetch hotel delivery charge on mount
+  // ─── Fetch hotel settings on mount ──
   useEffect(() => {
     const fetchHotelSettings = async () => {
       try {
         const { getHotelByCode } = await import('@/services/allinonApi');
         const res = await getHotelByCode(hotelCode);
-        const charge = res?.data?.hotel?.settings?.deliveryCharge || 0;
-        setHotelDeliveryCharge(charge);
+        setHotelSettings(res?.data?.hotel?.settings || {});
       } catch (err) {
         console.error('Error fetching hotel settings:', err);
+        setHotelSettings({});
       }
     };
     if (hotelCode) fetchHotelSettings();
   }, [hotelCode]);
 
-  // Fetch tables when dine-in is selected
+  // ─── Fetch tables / rooms ──
   useEffect(() => {
-    if (orderType === 'dine-in') {
-      fetchTables();
-    }
+    if (orderType === 'dine-in') fetchTables();
   }, [orderType]);
 
-  // Fetch rooms when room-service is selected
   useEffect(() => {
-    if (orderType === 'room-service') {
-      fetchRooms();
-    }
+    if (orderType === 'room-service') fetchRooms();
   }, [orderType]);
 
   const fetchTables = async () => {
@@ -103,54 +146,27 @@ export default function CheckoutPage() {
     }
   };
 
-  // Form validation
+  // ─── Validation ──
   const validateForm = () => {
-    if (!customerName.trim()) {
-      setError('Please enter your name');
-      return false;
-    }
-
-    if (!customerPhone.trim()) {
-      setError('Please enter your phone number');
-      return false;
-    }
-
-    if (!/^[0-9]{10}$/.test(customerPhone)) {
-      setError('Please enter a valid 10-digit phone number');
-      return false;
-    }
-
-    if (orderType === 'dine-in' && !selectedTable) {
-      setError('Please select a table');
-      return false;
-    }
-
-    if (orderType === 'room-service' && !selectedRoom) {
-      setError('Please select a room');
-      return false;
-    }
-
+    if (!customerName.trim()) { setError('Please enter your name'); return false; }
+    if (!customerPhone.trim()) { setError('Please enter your phone number'); return false; }
+    if (!/^[0-9]{10}$/.test(customerPhone)) { setError('Please enter a valid 10-digit phone number'); return false; }
+    if (orderType === 'dine-in' && !selectedTable) { setError('Please select a table'); return false; }
+    if (orderType === 'room-service' && !selectedRoom) { setError('Please select a room'); return false; }
     if (orderType === 'delivery' && (!customerAddress.trim() || customerAddress.trim().length < 10)) {
       setError('Please enter a valid delivery address (min 10 characters)');
       return false;
     }
-
     return true;
   };
 
-  // Handle order placement
+  // ─── Place Order ──
   const handlePlaceOrder = async () => {
     setError('');
-
-    // Validate form
-    if (!validateForm()) {
-      return;
-    }
-
+    if (!validateForm()) return;
     setLoading(true);
 
     try {
-      // Prepare order data
       const orderData = {
         orderType,
         customer: {
@@ -167,47 +183,32 @@ export default function CheckoutPage() {
         specialInstructions: specialInstructions.trim() || undefined,
       };
 
-      // Add table/room based on order type
-      if (orderType === 'dine-in') {
-        orderData.tableNumber = selectedTable;
-      } else if (orderType === 'room-service') {
-        orderData.roomNumber = selectedRoom;
-      } else if (orderType === 'delivery') {
-        orderData.deliveryCharge = hotelDeliveryCharge;
-      }
+      if (orderType === 'dine-in') orderData.tableNumber = selectedTable;
+      else if (orderType === 'room-service') orderData.roomNumber = selectedRoom;
 
-      // Place order
       const response = await placePublicOrder(hotelCode, orderData);
-      
-      // 🔥 IMPORTANT: Set flag BEFORE clearing cart to prevent redirect
+
       setIsOrderPlaced(true);
-      
-      // Clear cart
       clearCart();
 
-      // Navigate to success page with order number
-      // Handle multiple possible response structures
       const orderResult = response?.data?.order || response?.data || response?.order || response;
       const orderNumber = orderResult?.orderNumber || orderResult?._id;
-      
+
       if (!orderNumber) {
         console.error('Order response structure:', JSON.stringify(response));
         throw new Error('Order placed but could not get order number');
       }
 
       router.push(`/allinone/${hotelCode}/order-success?orderNumber=${orderNumber}`);
-
     } catch (err) {
       setError(err.message || 'Failed to place order. Please try again.');
-      setIsOrderPlaced(false); // Reset flag on error
+      setIsOrderPlaced(false);
     } finally {
       setLoading(false);
     }
   };
 
-  if (cart.length === 0 && !isOrderPlaced) {
-    return null; // Will redirect in useEffect
-  }
+  if (cart.length === 0 && !isOrderPlaced) return null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -231,7 +232,7 @@ export default function CheckoutPage() {
         </div>
       </header>
 
-      {/* Error Message */}
+      {/* Error */}
       {error && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
           <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg flex items-center gap-2">
@@ -246,12 +247,12 @@ export default function CheckoutPage() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid lg:grid-cols-3 gap-6">
-          {/* Left Column - Form */}
+          {/* Left Column */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Order Type Selection */}
+
+            {/* Order Type */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h2 className="text-xl font-bold text-gray-900 mb-4">Select Order Type</h2>
-              
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
                   { value: 'dine-in', label: 'Dine-in', icon: '🍽️' },
@@ -269,11 +270,14 @@ export default function CheckoutPage() {
                     }`}
                   >
                     <div className="text-3xl mb-2">{type.icon}</div>
-                    <div className={`font-semibold text-sm ${
-                      orderType === type.value ? 'text-orange-600' : 'text-gray-700'
-                    }`}>
+                    <div className={`font-semibold text-sm ${orderType === type.value ? 'text-orange-600' : 'text-gray-700'}`}>
                       {type.label}
                     </div>
+                    {/* ✅ Show packaging badge on applicable order types */}
+                    {hotelSettings?.packagingEnabled &&
+                      (hotelSettings.packagingApplicableOn || []).includes(type.value) && (
+                        <div className="text-xs text-orange-500 mt-1 font-medium">📦 +packaging</div>
+                      )}
                   </button>
                 ))}
               </div>
@@ -282,9 +286,7 @@ export default function CheckoutPage() {
             {/* Customer Details */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h2 className="text-xl font-bold text-gray-900 mb-4">Customer Details</h2>
-              
               <div className="space-y-4">
-                {/* Name */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Full Name <span className="text-red-500">*</span>
@@ -298,7 +300,6 @@ export default function CheckoutPage() {
                   />
                 </div>
 
-                {/* Phone */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Phone Number <span className="text-red-500">*</span>
@@ -312,7 +313,6 @@ export default function CheckoutPage() {
                   />
                 </div>
 
-                {/* Email (Optional) */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Email <span className="text-gray-400 text-sm">(Optional)</span>
@@ -326,7 +326,6 @@ export default function CheckoutPage() {
                   />
                 </div>
 
-                {/* Delivery Address (Only for Delivery) */}
                 {orderType === 'delivery' && (
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -345,13 +344,12 @@ export default function CheckoutPage() {
               </div>
             </div>
 
-            {/* Table Selection (Dine-in) */}
+            {/* Table Selection */}
             {orderType === 'dine-in' && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">
                   Select Table <span className="text-red-500">*</span>
                 </h2>
-                
                 {loadingResources ? (
                   <div className="text-center py-8">
                     <div className="w-8 h-8 border-4 border-orange-200 border-t-orange-600 rounded-full animate-spin mx-auto"></div>
@@ -370,14 +368,10 @@ export default function CheckoutPage() {
                         }`}
                       >
                         <div className="text-2xl mb-1">🪑</div>
-                        <div className={`font-semibold text-sm ${
-                          selectedTable === table.tableNumber ? 'text-orange-600' : 'text-gray-700'
-                        }`}>
+                        <div className={`font-semibold text-sm ${selectedTable === table.tableNumber ? 'text-orange-600' : 'text-gray-700'}`}>
                           {table.tableNumber}
                         </div>
-                        <div className="text-xs text-gray-500">
-                          {table.capacity} seats
-                        </div>
+                        <div className="text-xs text-gray-500">{table.capacity} seats</div>
                       </button>
                     ))}
                   </div>
@@ -389,13 +383,12 @@ export default function CheckoutPage() {
               </div>
             )}
 
-            {/* Room Selection (Room Service) */}
+            {/* Room Selection */}
             {orderType === 'room-service' && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">
                   Select Room <span className="text-red-500">*</span>
                 </h2>
-                
                 {loadingResources ? (
                   <div className="text-center py-8">
                     <div className="w-8 h-8 border-4 border-orange-200 border-t-orange-600 rounded-full animate-spin mx-auto"></div>
@@ -414,14 +407,10 @@ export default function CheckoutPage() {
                         }`}
                       >
                         <div className="text-2xl mb-1">🚪</div>
-                        <div className={`font-semibold ${
-                          selectedRoom === room.roomNumber ? 'text-orange-600' : 'text-gray-700'
-                        }`}>
+                        <div className={`font-semibold ${selectedRoom === room.roomNumber ? 'text-orange-600' : 'text-gray-700'}`}>
                           {room.roomNumber}
                         </div>
-                        <div className="text-xs text-gray-500">
-                          Floor {room.floor}
-                        </div>
+                        <div className="text-xs text-gray-500">Floor {room.floor}</div>
                       </button>
                     ))}
                   </div>
@@ -448,11 +437,11 @@ export default function CheckoutPage() {
             </div>
           </div>
 
-          {/* Right Column - Order Summary */}
+          {/* Right Column — Order Summary */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sticky top-24">
               <h2 className="text-xl font-bold text-gray-900 mb-4">Order Summary</h2>
-              
+
               {/* Cart Items */}
               <div className="space-y-3 mb-4 max-h-64 overflow-y-auto">
                 {cart.map((item) => (
@@ -480,24 +469,52 @@ export default function CheckoutPage() {
                 ))}
               </div>
 
-              {/* Price Breakdown */}
+              {/* ✅ Price Breakdown */}
               <div className="space-y-2 pt-4 border-t border-gray-200">
+                {/* Subtotal */}
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Subtotal</span>
                   <span className="text-black font-semibold">{formatPrice(subtotal)}</span>
                 </div>
+
+                {/* ✅ Packaging Charge */}
+                {packagingCharge > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600 flex items-center gap-1">
+                      📦 Packaging Charge
+                    </span>
+                    <span className="text-black font-semibold">{formatPrice(packagingCharge)}</span>
+                  </div>
+                )}
+
+                {/* GST */}
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">GST (5%)</span>
+                  <span className="text-gray-600">GST ({taxRate}%)</span>
                   <span className="text-black font-semibold">{formatPrice(tax)}</span>
                 </div>
+
+                {/* ✅ Delivery Charge */}
                 {orderType === 'delivery' && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Delivery Charge</span>
-                    <span className={hotelDeliveryCharge > 0 ? "text-black font-semibold" : "text-green-600 font-semibold"}>
-                      {hotelDeliveryCharge > 0 ? formatPrice(hotelDeliveryCharge) : 'FREE'}
+                    <span className="text-gray-600 flex items-center gap-1">
+                      🚚 Delivery Charge
+                    </span>
+                    <span className={deliveryCharge > 0 ? 'text-black font-semibold' : 'text-green-600 font-semibold'}>
+                      {deliveryCharge > 0 ? formatPrice(deliveryCharge) : 'FREE'}
                     </span>
                   </div>
                 )}
+
+                {/* ✅ Slab info hint for delivery */}
+                {orderType === 'delivery' &&
+                  hotelSettings?.deliveryChargeType === 'slab' &&
+                  hotelSettings?.deliverySlabs?.length > 0 && (
+                    <div className="text-xs text-gray-400 italic">
+                      * Delivery charge based on order amount
+                    </div>
+                  )}
+
+                {/* Total */}
                 <div className="flex justify-between text-lg font-bold pt-2 border-t border-gray-200 text-black">
                   <span>Total</span>
                   <span className="text-orange-600">{formatPrice(total)}</span>
@@ -517,7 +534,7 @@ export default function CheckoutPage() {
                   </>
                 ) : (
                   <>
-                    <span>Place Order</span>
+                    <span>Place Order • {formatPrice(total)}</span>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
@@ -526,7 +543,7 @@ export default function CheckoutPage() {
               </button>
 
               <p className="text-xs text-gray-500 text-center mt-3">
-                Payment: Cash on Delivery
+                Payment: Cash on Delivery / At Counter
               </p>
             </div>
           </div>
