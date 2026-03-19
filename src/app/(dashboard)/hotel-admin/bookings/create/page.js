@@ -134,7 +134,7 @@ export default function CreateBookingPage() {
         roomCharges = hourlyRate * duration;
       }
       const subtotal = roomCharges + customChargesTotal;
-      const tax = Math.ceil(subtotal * 0.05);
+      const tax = Math.round(subtotal * 0.05);
       setPricingPreview({ duration, roomCharges, extraCharges: 0, customChargesTotal, subtotal, tax, total: subtotal + tax, hourlyRate, isManualPrice: form.useManualPrice });
     }
   }, [selectedRoom, form.checkInDate, form.checkOutDate, form.adults, form.children, form.hours, bookingType, form.useManualPrice, form.manualPrice, form.useManualDailyPrice, form.manualDailyPrice, customChargesTotal]);

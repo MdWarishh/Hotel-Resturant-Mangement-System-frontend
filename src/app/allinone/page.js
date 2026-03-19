@@ -1,12 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-// import { getAllHotels } from '@/services/allinoneApi';
 import Link from 'next/link';
 import Image from 'next/image';
 import { getAllHotels } from '@/services/allinonApi';
-
-export const dynamic = 'force-static';
 
 export default function AllInOneHotelsPage() {
   const [hotels, setHotels] = useState([]);

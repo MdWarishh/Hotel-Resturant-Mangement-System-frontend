@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
 import { apiRequest } from '@/services/api'
-import { Loader2, AlertCircle, Plus, Search, RefreshCw, Calendar } from 'lucide-react'
+import { Loader2, AlertCircle, Plus, Search, RefreshCw } from 'lucide-react'
 import { format } from 'date-fns'
 
 export default function CashierBookingsPage() {
@@ -14,6 +14,7 @@ export default function CashierBookingsPage() {
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [actionLoading, setActionLoading] = useState(null) // ✅ track which booking is loading
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [dateFilter, setDateFilter] = useState('all')
@@ -25,9 +26,8 @@ export default function CashierBookingsPage() {
   const fetchBookings = async () => {
     setLoading(true)
     setError(null)
-
     try {
-      const res = await apiRequest('/bookings') // Assume endpoint returns all bookings for hotel
+      const res = await apiRequest('/bookings')
       setBookings(res.data?.bookings || res.data || [])
     } catch (err) {
       setError('Failed to load bookings')
@@ -36,23 +36,53 @@ export default function CashierBookingsPage() {
     }
   }
 
+  // ✅ Check-In handler
+  const handleCheckIn = async (e, id) => {
+    e.stopPropagation() // row click pe navigate na ho
+    if (!confirm('Confirm check-in for this guest?')) return
+    setActionLoading(id)
+    try {
+      await apiRequest(`/bookings/${id}/checkin`, { method: 'POST' })
+      fetchBookings()
+    } catch (err) {
+      alert(err.message || 'Check-in failed')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  // ✅ Check-Out handler
+  const handleCheckOut = async (e, id) => {
+    e.stopPropagation()
+    if (!confirm('Confirm check-out for this guest?')) return
+    setActionLoading(id)
+    try {
+      await apiRequest(`/bookings/${id}/checkout`, { method: 'POST' })
+      fetchBookings()
+    } catch (err) {
+      alert(err.message || 'Check-out failed')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
   // Filtered bookings
-const filteredBookings = bookings.filter(booking => {
-  // Correct paths based on Booking.model.js
-  const guestName = booking.guest?.name || ''; 
-  const roomNumber = booking.room?.roomNumber?.toString() || '';
+  const filteredBookings = bookings.filter(booking => {
+    const guestName = booking.guest?.name || ''
+    const roomNumber = booking.room?.roomNumber?.toString() || ''
 
-  const matchesSearch = guestName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        roomNumber.includes(searchQuery);
+    const matchesSearch =
+      guestName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      roomNumber.includes(searchQuery)
 
-  const matchesStatus = statusFilter === 'all' || booking.status === statusFilter;
+    const matchesStatus = statusFilter === 'all' || booking.status === statusFilter
 
-  // Correct date path
-  const matchesDate = dateFilter === 'all' || 
-                      (booking.dates?.checkIn && new Date(booking.dates.checkIn) >= new Date(dateFilter));
+    const matchesDate =
+      dateFilter === 'all' ||
+      (booking.dates?.checkIn && new Date(booking.dates.checkIn) >= new Date(dateFilter))
 
-  return matchesSearch && matchesStatus && matchesDate;
-});
+    return matchesSearch && matchesStatus && matchesDate
+  })
 
   if (loading) {
     return (
@@ -80,6 +110,7 @@ const filteredBookings = bookings.filter(booking => {
   return (
     <div className="min-h-screen p-6">
       <div className="max-w-7xl mx-auto">
+
         {/* Header */}
         <div className="mb-8 flex justify-between items-center">
           <h1 className="text-black text-3xl font-bold">Bookings</h1>
@@ -111,21 +142,24 @@ const filteredBookings = bookings.filter(booking => {
             className="text-black p-3 border rounded-lg"
           >
             <option value="all">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="confirmed">Confirmed</option>
             <option value="reserved">Reserved</option>
-            <option value="checked-in">Checked-In</option>
-            <option value="checked-out">Checked-Out</option>
+            <option value="checked_in">Checked In</option>
+            <option value="checked_out">Checked Out</option>
             <option value="cancelled">Cancelled</option>
+            <option value="no_show">No Show</option>
           </select>
 
           <input
             type="date"
-            value={dateFilter}
-            onChange={e => setDateFilter(e.target.value)}
+            value={dateFilter === 'all' ? '' : dateFilter}
+            onChange={e => setDateFilter(e.target.value || 'all')}
             className="text-black p-3 border rounded-lg"
           />
         </div>
 
-        {/* Bookings List */}
+        {/* Bookings Table */}
         <div className="bg-white rounded-xl overflow-hidden border text-black">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -146,36 +180,91 @@ const filteredBookings = bookings.filter(booking => {
                 </tr>
               ) : (
                 filteredBookings.map(booking => (
-                  <tr key={booking._id} className="hover:bg-gray-50 cursor-pointer" onClick={() => router.push(`/cashier/bookings/${booking._id}`)}>
-                  <td className="px-6 py-4">
-  <p className="font-medium">{booking.guest?.name || 'Unknown'}</p>
-  <p className="text-sm text-gray-500">{booking.guest?.phone || 'No Phone'}</p>
-</td>
-                    <td className="px-6 py-4 text-sm">
-                      {booking.room.roomNumber} ({booking.room.type})
+                  <tr
+                    key={booking._id}
+                    className="hover:bg-gray-50 cursor-pointer"
+                    onClick={() => router.push(`/cashier/bookings/${booking._id}`)}
+                  >
+                    {/* Guest */}
+                    <td className="px-6 py-4">
+                      <p className="font-medium">{booking.guest?.name || 'Unknown'}</p>
+                      <p className="text-sm text-gray-500">{booking.guest?.phone || 'No Phone'}</p>
                     </td>
-                  {/* Dates Column */}
-<td className="px-6 py-4 text-sm">
-  {booking.dates?.checkIn && booking.dates?.checkOut ? (
-    <>
-      {format(new Date(booking.dates.checkIn), 'dd MMM')} - {format(new Date(booking.dates.checkOut), 'dd MMM')}
-    </>
-  ) : (
-    <span className="text-gray-400 italic">Dates not set</span>
-  )}
-</td>
-                   <td className="px-6 py-4 text-center">
-  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-    booking.status === 'confirmed' ? 'bg-yellow-100 text-yellow-800' :
-    booking.status === 'checked_in' ? 'bg-blue-100 text-blue-800' :
-    booking.status === 'checked_out' ? 'bg-green-100 text-green-800' :
-    'bg-red-100 text-red-800'
-  }`}>
-    {booking.status.replace('_', ' ').toUpperCase()}
-  </span>
-</td>
-                    <td className="px-6 py-4 text-center text-sm text-[rgb(0,173,181)] font-medium hover:underline">
-                      View Details
+
+                    {/* Room */}
+                    <td className="px-6 py-4 text-sm">
+                      <p className="font-medium">{booking.room?.roomNumber}</p>
+                      <p className="text-xs text-gray-500">{booking.room?.roomType}</p>
+                    </td>
+
+                    {/* Dates */}
+                    <td className="px-6 py-4 text-sm">
+                      {booking.dates?.checkIn && booking.dates?.checkOut ? (
+                        <>
+                          {format(new Date(booking.dates.checkIn), 'dd MMM')} —{' '}
+                          {format(new Date(booking.dates.checkOut), 'dd MMM')}
+                        </>
+                      ) : (
+                        <span className="text-gray-400 italic">Dates not set</span>
+                      )}
+                    </td>
+
+                    {/* Status Badge */}
+                    <td className="px-6 py-4 text-center">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        booking.status === 'confirmed'   ? 'bg-yellow-100 text-yellow-800' :
+                        booking.status === 'reserved'    ? 'bg-blue-100 text-blue-800' :
+                        booking.status === 'checked_in'  ? 'bg-teal-100 text-teal-800' :
+                        booking.status === 'checked_out' ? 'bg-green-100 text-green-800' :
+                        booking.status === 'cancelled'   ? 'bg-red-100 text-red-800' :
+                        booking.status === 'no_show'     ? 'bg-orange-100 text-orange-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {booking.status.replace('_', ' ').toUpperCase()}
+                      </span>
+                    </td>
+
+                    {/* ✅ Actions */}
+                    <td className="px-6 py-4 text-center" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-2">
+
+                        {/* Check-In — sirf confirmed ya reserved booking pe */}
+                        {(booking.status === 'confirmed' || booking.status === 'reserved') && (
+                          <button
+                            onClick={(e) => handleCheckIn(e, booking._id)}
+                            disabled={actionLoading === booking._id}
+                            className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded-lg transition disabled:opacity-50 flex items-center gap-1"
+                          >
+                            {actionLoading === booking._id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : 'Check-In'
+                            }
+                          </button>
+                        )}
+
+                        {/* Check-Out — sirf checked_in booking pe */}
+                        {booking.status === 'checked_in' && (
+                          <button
+                            onClick={(e) => handleCheckOut(e, booking._id)}
+                            disabled={actionLoading === booking._id}
+                            className="px-3 py-1.5 bg-gray-800 hover:bg-orange-600 text-white text-xs font-medium rounded-lg transition disabled:opacity-50 flex items-center gap-1"
+                          >
+                            {actionLoading === booking._id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : 'Check-Out'
+                            }
+                          </button>
+                        )}
+
+                        {/* View Details — hamesha */}
+                        <button
+                          onClick={() => router.push(`/cashier/bookings/${booking._id}`)}
+                          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium rounded-lg transition"
+                        >
+                          View
+                        </button>
+
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -191,6 +280,7 @@ const filteredBookings = bookings.filter(booking => {
         >
           <Plus className="h-6 w-6" />
         </button>
+
       </div>
     </div>
   )
