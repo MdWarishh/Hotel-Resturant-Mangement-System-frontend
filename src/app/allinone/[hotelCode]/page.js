@@ -642,7 +642,6 @@ function ReviewModal({ item, hotelCode, onClose, onSubmitted }) {
   const [hovered, setHovered] = useState(0);
   const [comment, setComment] = useState('');
   const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -650,15 +649,13 @@ function ReviewModal({ item, hotelCode, onClose, onSubmitted }) {
 
   const handleSubmit = async () => {
     if (!rating) return setError('Please select a rating');
-    if (!name.trim()) return setError('Please enter your name');
-    if (!phone.trim()) return setError('Please enter your phone number');
     setLoading(true);
     setError('');
     try {
       const res = await fetch(`${API_URL}/allinone/${hotelCode}/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ menuItemId: item._id, rating, comment, customer: { name, phone } }),
+        body: JSON.stringify({ menuItemId: item._id, rating, comment, customer: { name: name.trim() || 'Anonymous' } }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
@@ -743,24 +740,16 @@ function ReviewModal({ item, hotelCode, onClose, onSubmitted }) {
           />
 
           {/* Customer Info */}
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { value: name, onChange: setName, placeholder: 'Your name *', type: 'text' },
-              { value: phone, onChange: setPhone, placeholder: 'Phone *', type: 'tel' },
-            ].map((field, i) => (
-              <input
-                key={i}
-                value={field.value}
-                onChange={e => field.onChange(e.target.value)}
-                placeholder={field.placeholder}
-                type={field.type}
-                className="px-4 py-2.5 text-sm text-[#1a1412] placeholder-[#c5bfb8] rounded-xl outline-none transition-all"
-                style={{ border: '1.5px solid #ede9e3', background: '#faf8f5' }}
-                onFocus={e => e.target.style.borderColor = '#f97316'}
-                onBlur={e => e.target.style.borderColor = '#ede9e3'}
-              />
-            ))}
-          </div>
+          <input
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Your name (optional)"
+            type="text"
+            className="w-full px-4 py-2.5 text-sm text-[#1a1412] placeholder-[#c5bfb8] rounded-xl outline-none transition-all"
+            style={{ border: '1.5px solid #ede9e3', background: '#faf8f5' }}
+            onFocus={e => e.target.style.borderColor = '#f97316'}
+            onBlur={e => e.target.style.borderColor = '#ede9e3'}
+          />
 
           {error && (
             <p className="text-xs text-center font-medium" style={{ color: '#ef4444' }}>{error}</p>
