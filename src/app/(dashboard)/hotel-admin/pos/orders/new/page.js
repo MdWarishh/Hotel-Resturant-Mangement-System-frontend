@@ -89,14 +89,29 @@ useEffect(() => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleStartOrder = () => {
+  const handleStartOrder = async () => {
     if (!validateStart()) return;
+
+    // Dine-in hai to table ko occupied mark karo
+    if (orderType === 'dine-in') {
+      const selectedTable = availableTables.find(t => t.tableNumber === tableNumber);
+      if (selectedTable) {
+        try {
+          await apiRequest(`/tables/${selectedTable._id}/status`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: 'occupied' }),
+          });
+        } catch (err) {
+          setErrors({ general: 'Failed to reserve table. Please try again.' });
+          return;
+        }
+      }
+    }
 
     startOrder({
       orderType,
       tableNumber: orderType === 'dine-in' ? tableNumber : undefined,
-    room: orderType === 'room-service' ? selectedRoomId : undefined,
-      // Add more if needed (booking, customer)
+      room: orderType === 'room-service' ? selectedRoomId : undefined,
     });
   };
 
@@ -140,6 +155,7 @@ useEffect(() => {
   };
 
   const handlePaymentSuccess = (orderData) => {
+    // Table backend pe /pos/orders/:id/payment call hote hi automatically free ho jaata hai
     resetOrder();
     setShowPayment(false);
     if (onOrderSuccess) onOrderSuccess(orderData);

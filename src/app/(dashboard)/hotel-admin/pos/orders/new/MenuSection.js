@@ -216,7 +216,7 @@ export default function MenuSection() {
             No items found.
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredItems.map((item) => (
               <div
                 key={item._id}
@@ -233,11 +233,11 @@ export default function MenuSection() {
                 )}
 
                 <div className="p-4">
-                  <div className="flex justify-between items-start mb-1">
-                    <h4 className="font-semibold text-gray-900 dark:text-white truncate">
+                  <div className="mb-1">
+                    <h4 className="font-semibold text-gray-900 dark:text-white leading-snug break-words">
                       {item.name}
                     </h4>
-                    <span className="text-lg font-bold text-[rgb(0,173,181)] ml-2 flex-shrink-0">
+                    <span className="text-lg font-bold text-[rgb(0,173,181)]">
                       ₹{item.price}
                     </span>
                   </div>
