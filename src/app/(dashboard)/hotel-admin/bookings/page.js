@@ -252,16 +252,14 @@ export default function BookingsPage() {
 
         <div className="flex items-center gap-4">
           {/* 🔥 GST Report Button */}
+          <Link href="/hotel-admin/bookings/gst-report">
           <button
-            onClick={() => {
-              setShowGSTModal(true);
-              populateFinancialYear();
-            }}
             className="flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-medium transition-all shadow-sm"
           >
             <FileText className="h-4 w-4" />
             GST Report
           </button>
+          </Link>
 
           <button
             onClick={fetchBookings}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -13,7 +13,9 @@ import {
   Package,
   Plus,
   Trash2,
-  ChevronDown,
+  Bell,
+  BellOff,
+  BellRing,
 } from 'lucide-react';
 
 // ─── Small reusable components ───────────────────────────────
@@ -119,6 +121,268 @@ const ORDER_TYPE_LABELS = {
   'room-service': 'Room Service',
 };
 
+// ─── 🔔 Push Notification Section Component ──────────────────
+// Ye alag component hai taaki main page clean rahe
+
+function PushNotificationSection() {
+  // 'idle'       = pata nahi hai abhi
+  // 'unsupported'= browser support nahi karta
+  // 'denied'     = user ne block kiya
+  // 'subscribed' = active hai
+  // 'unsubscribed'= OFF hai
+  const [pushStatus, setPushStatus] = useState('idle');
+  const [pushLoading, setPushLoading] = useState(false);
+  const [pushMsg, setPushMsg] = useState('');
+
+  // Page load pe check karo current status
+  useEffect(() => {
+    checkPushStatus();
+  }, []);
+
+const checkPushStatus = async () => {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    setPushStatus('unsupported');
+    return;
+  }
+
+  try {
+    // ✅ ready() ki jagah getRegistrations() use karo — ye hang nahi karta
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    
+    if (registrations.length === 0) {
+      // Koi SW registered nahi — seedha unsubscribed
+      const permission = Notification.permission;
+      setPushStatus(permission === 'denied' ? 'denied' : 'unsubscribed');
+      return;
+    }
+
+    // SW hai toh subscription check karo
+    const reg = registrations[0];
+    const existing = await reg.pushManager.getSubscription();
+    
+    if (existing) {
+      setPushStatus('subscribed');
+    } else {
+      const permission = Notification.permission;
+      setPushStatus(permission === 'denied' ? 'denied' : 'unsubscribed');
+    }
+  } catch (err) {
+    console.error('Push status check error:', err);
+    setPushStatus('unsubscribed');
+  }
+};
+const handleSubscribe = async () => {
+  setPushLoading(true);
+  setPushMsg('');
+
+  try {
+    // 1. SW register karo aur directly reg use karo
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    
+    // ✅ install hone ka wait karo properly
+    await new Promise((resolve) => {
+      if (reg.installing) {
+        reg.installing.addEventListener('statechange', (e) => {
+          if (e.target.state === 'activated') resolve();
+        });
+      } else {
+        resolve(); // already active hai
+      }
+    });
+
+    // 2. VAPID key lo
+    const keyRes = await apiRequest('/pos/push/vapid-public-key');
+    const publicKey = keyRes?.data?.publicKey || keyRes?.publicKey;
+    if (!publicKey) throw new Error('Could not get notification key from server');
+
+    // 3. Subscribe karo
+    const subscription = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: publicKey,
+    });
+
+    // 4. Backend mein save karo
+    await apiRequest('/pos/push/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ subscription }),
+    });
+
+    setPushStatus('subscribed');
+    setPushMsg('✅ Notifications enabled! Ab order aane par notification milega.');
+    setTimeout(() => setPushMsg(''), 5000);
+  } catch (err) {
+    console.error('Subscribe error:', err);
+    if (Notification.permission === 'denied') {
+      setPushStatus('denied');
+      setPushMsg('');
+    } else {
+      setPushMsg(`❌ ${err.message || 'Failed to enable notifications. Please try again.'}`);
+    }
+  } finally {
+    setPushLoading(false);
+  }
+};
+
+  const handleUnsubscribe = async () => {
+    setPushLoading(true);
+    setPushMsg('');
+
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const subscription = await reg.pushManager.getSubscription();
+
+      if (subscription) {
+        // Backend se remove karo
+        await apiRequest('/pos/push/unsubscribe', {
+          method: 'POST',
+          body: JSON.stringify({ endpoint: subscription.endpoint }),
+        });
+        // Browser se bhi unsubscribe karo
+        await subscription.unsubscribe();
+      }
+
+      setPushStatus('unsubscribed');
+      setPushMsg('Notifications disabled for this device.');
+      setTimeout(() => setPushMsg(''), 4000);
+    } catch (err) {
+      console.error('Unsubscribe error:', err);
+      setPushMsg('❌ Failed to disable. Try again.');
+    } finally {
+      setPushLoading(false);
+    }
+  };
+
+  // ── UI render karo status ke hisaab se ──
+
+  if (pushStatus === 'idle') {
+    return (
+      <div className="flex items-center gap-3 text-gray-400 text-sm py-2">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Checking notification status...
+      </div>
+    );
+  }
+
+  if (pushStatus === 'unsupported') {
+    return (
+      <div className="flex items-start gap-4 p-5 bg-amber-50 rounded-2xl border border-amber-200">
+        <BellOff className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
+        <div>
+          <p className="font-semibold text-amber-800">Browser Not Supported</p>
+          <p className="text-sm text-amber-600 mt-1">
+            Aapka browser push notifications support nahi karta. Chrome ya Edge use karo.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (pushStatus === 'denied') {
+    return (
+      <div className="flex items-start gap-4 p-5 bg-red-50 rounded-2xl border border-red-200">
+        <BellOff className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+        <div>
+          <p className="font-semibold text-red-800">Notifications Blocked</p>
+          <p className="text-sm text-red-600 mt-1">
+            Aapne notifications block ki hain. Browser settings mein jaake allow karo:
+          </p>
+          <p className="text-xs text-red-500 mt-2 font-mono bg-red-100 px-3 py-1 rounded-lg inline-block">
+            Browser Settings → Privacy → Notifications → Allow this site
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (pushStatus === 'subscribed') {
+    return (
+      <div className="space-y-4">
+        {/* Active state card */}
+        <div className="flex items-center justify-between p-5 bg-teal-50 rounded-2xl border border-teal-200">
+          <div className="flex items-center gap-4">
+            <div className="bg-teal-100 p-2.5 rounded-xl">
+              <BellRing className="h-5 w-5 text-teal-600" />
+            </div>
+            <div>
+              <p className="font-semibold text-teal-900">Notifications Active</p>
+              <p className="text-sm text-teal-700 mt-0.5">
+                Ye device receive karega — delivery, takeaway, room service, dine-in
+              </p>
+            </div>
+          </div>
+          {/* Green dot animation */}
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-teal-500"></span>
+            </span>
+            <span className="text-xs font-semibold text-teal-600">LIVE</span>
+          </div>
+        </div>
+
+        {/* Disable button */}
+        <button
+          type="button"
+          onClick={handleUnsubscribe}
+          disabled={pushLoading}
+          className="flex items-center gap-2 text-sm font-semibold text-gray-500 hover:text-red-500 hover:bg-red-50 px-4 py-2 rounded-xl transition-colors disabled:opacity-50"
+        >
+          {pushLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <BellOff className="h-4 w-4" />
+          )}
+          Disable for this device
+        </button>
+
+        {pushMsg && <p className="text-sm text-gray-600">{pushMsg}</p>}
+      </div>
+    );
+  }
+
+  // Default: unsubscribed — Enable button dikhao
+  return (
+    <div className="space-y-4">
+      {/* Info card */}
+      <div className="flex items-start gap-4 p-5 bg-gray-50 rounded-2xl border border-gray-200">
+        <BellOff className="h-5 w-5 text-gray-400 mt-0.5 shrink-0" />
+        <div>
+          <p className="font-semibold text-gray-700">Notifications OFF for this device</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Enable karo taaki jab bhi koi delivery ya takeaway order aaye, aapko notification mile —
+            chahe browser band ho ya system idle ho.
+          </p>
+        </div>
+      </div>
+
+      {/* Enable button */}
+      <button
+        type="button"
+        onClick={handleSubscribe}
+        disabled={pushLoading}
+        className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold px-6 py-3 rounded-2xl shadow-sm transition-all disabled:opacity-50"
+      >
+        {pushLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Bell className="h-4 w-4" />
+        )}
+        {pushLoading ? 'Enabling...' : 'Enable Notifications for this Device'}
+      </button>
+
+      {pushMsg && (
+        <p className={`text-sm font-medium ${pushMsg.startsWith('✅') ? 'text-teal-600' : 'text-red-500'}`}>
+          {pushMsg}
+        </p>
+      )}
+
+      <p className="text-xs text-gray-400">
+        💡 Tip: Har us device par enable karo jahan aap orders dekhte ho (mobile + desktop dono)
+      </p>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────
 
 export default function HotelSettingsPage() {
@@ -134,7 +398,7 @@ export default function HotelSettingsPage() {
 
   // ── Delivery ──
   const [deliveryEnabled, setDeliveryEnabled] = useState(false);
-  const [deliveryChargeType, setDeliveryChargeType] = useState('fixed'); // 'fixed' | 'slab'
+  const [deliveryChargeType, setDeliveryChargeType] = useState('fixed');
   const [deliveryCharge, setDeliveryCharge] = useState(0);
   const [deliverySlabs, setDeliverySlabs] = useState([]);
 
@@ -175,14 +439,12 @@ export default function HotelSettingsPage() {
     if (user?.hotel?._id) fetchSettings();
   }, [user]);
 
-  // ── Toggle applicable order type for packaging ──
   const toggleApplicableType = (type) => {
     setPackagingApplicableOn((prev) =>
       prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
     );
   };
 
-  // ── Save ──
   const handleSave = async () => {
     setSaving(true);
     setSuccess('');
@@ -236,6 +498,22 @@ export default function HotelSettingsPage() {
         </div>
       </div>
 
+      {/* ── 🔔 Push Notification Settings (NAYA SECTION) ── */}
+      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-8 py-5 bg-gray-50 border-b flex items-center gap-3">
+          <Bell className="h-5 w-5 text-teal-600" />
+          <div>
+            <h3 className="text-xl font-semibold text-gray-900">Order Notifications</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Browser band ho tab bhi notification aayegi
+            </p>
+          </div>
+        </div>
+        <div className="p-8">
+          <PushNotificationSection />
+        </div>
+      </div>
+
       {/* ── Delivery Settings ── */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-8 py-5 bg-gray-50 border-b flex items-center gap-3">
@@ -244,7 +522,6 @@ export default function HotelSettingsPage() {
         </div>
 
         <div className="p-8 space-y-6">
-          {/* Enable toggle */}
           <div className="flex items-center justify-between p-5 bg-gray-50 rounded-2xl">
             <div>
               <p className="font-semibold text-gray-900 text-lg">Enable Delivery Orders</p>
@@ -257,7 +534,6 @@ export default function HotelSettingsPage() {
 
           {deliveryEnabled && (
             <>
-              {/* Charge type selector */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-3">
                   Delivery Charge Type
@@ -280,7 +556,6 @@ export default function HotelSettingsPage() {
                 </div>
               </div>
 
-              {/* Fixed input */}
               {deliveryChargeType === 'fixed' && (
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -308,7 +583,6 @@ export default function HotelSettingsPage() {
                 </div>
               )}
 
-              {/* Slab editor */}
               {deliveryChargeType === 'slab' && (
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">
@@ -333,7 +607,6 @@ export default function HotelSettingsPage() {
         </div>
 
         <div className="p-8 space-y-6">
-          {/* Enable toggle */}
           <div className="flex items-center justify-between p-5 bg-gray-50 rounded-2xl">
             <div>
               <p className="font-semibold text-gray-900 text-lg">Enable Packaging Charge</p>
@@ -346,7 +619,6 @@ export default function HotelSettingsPage() {
 
           {packagingEnabled && (
             <>
-              {/* Applicable on */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-3">
                   Apply Packaging Charge On
@@ -369,7 +641,6 @@ export default function HotelSettingsPage() {
                 </div>
               </div>
 
-              {/* Charge type */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-3">
                   Packaging Charge Type
@@ -392,7 +663,6 @@ export default function HotelSettingsPage() {
                 </div>
               </div>
 
-              {/* Fixed input */}
               {packagingChargeType === 'fixed' && (
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -411,7 +681,6 @@ export default function HotelSettingsPage() {
                 </div>
               )}
 
-              {/* Slab editor */}
               {packagingChargeType === 'slab' && (
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">

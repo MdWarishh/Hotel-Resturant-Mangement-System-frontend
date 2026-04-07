@@ -13,7 +13,8 @@ import {
   Menu,
   X,
   BedDouble,
-  ChefHat, // Kitchen icon
+  ChefHat,
+  TableProperties, // Kitchen icon
 } from 'lucide-react';
 
 export default function CashierLayout({ children }) {
@@ -110,6 +111,12 @@ export default function CashierLayout({ children }) {
             active={pathname.startsWith('/cashier/kitchen')}
             onClick={() => router.push('/cashier/kitchen')}
           />
+          <SidebarItem
+  icon={<TableProperties size={20} />}
+  label="Tables"
+  active={pathname.startsWith('/cashier/tables')}
+  onClick={() => router.push('/cashier/tables')}
+/>
         </nav>
 
         <div className="border-t p-4 bg-gray-50">
