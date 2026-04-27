@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { apiRequest } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { 
-  Plus, Loader2, Search, RefreshCw, Download, X, 
+  Plus, Loader2, Search, RefreshCw, X, 
   ChevronLeft, ChevronRight, Calendar, 
   FileText,
   FileSpreadsheet,
@@ -27,7 +27,7 @@ export default function BookingsPage() {
   const [dateTo, setDateTo] = useState('');
 
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
+  const [limit] = useState(10); // 🔥 FIX 1: was 20 → now 10 per page
   const [total, setTotal] = useState(0);
 
   const [stats, setStats] = useState({
@@ -36,7 +36,6 @@ export default function BookingsPage() {
     pendingPayments: 0,
   });
 
-  // 🔥 GST Report state
   const [showGSTModal, setShowGSTModal] = useState(false);
   const [gstDateFrom, setGstDateFrom] = useState('');
   const [gstDateTo, setGstDateTo] = useState('');
@@ -47,29 +46,41 @@ export default function BookingsPage() {
     setLoading(true);
 
     let url = `/bookings?hotel=${hotelId}&page=${page}&limit=${limit}`;
-    if (searchTerm) url += `&search=${encodeURIComponent(searchTerm)}`;
-    if (statusFilter) url += `&status=${statusFilter}`;
+    if (searchTerm)    url += `&search=${encodeURIComponent(searchTerm)}`;
+    if (statusFilter)  url += `&status=${statusFilter}`;
     if (paymentFilter) url += `&paymentStatus=${paymentFilter}`;
-    if (dateFrom) url += `&checkInFrom=${dateFrom}`;
-    if (dateTo) url += `&checkInTo=${dateTo}`;
+    if (dateFrom)      url += `&checkInFrom=${dateFrom}`;
+    if (dateTo)        url += `&checkInTo=${dateTo}`;
+
+    // Stats — always full DB counts (no filters)
+    const today = new Date().toISOString().split('T')[0];
+    const statsCheckedInUrl = `/bookings?hotel=${hotelId}&status=checked_in&checkInFrom=${today}&checkInTo=${today}&page=1&limit=1`;
+    const statsPendingUrl   = `/bookings?hotel=${hotelId}&paymentStatus=pending&page=1&limit=1`;
+    const statsPartialUrl   = `/bookings?hotel=${hotelId}&paymentStatus=partially_paid&page=1&limit=1`;
+    const statsTotalUrl     = `/bookings?hotel=${hotelId}&page=1&limit=1`;
 
     try {
-      const res = await apiRequest(url);
+      const [res, resCheckedIn, resPending, resPartial, resTotal] = await Promise.all([
+        apiRequest(url),
+        apiRequest(statsCheckedInUrl),
+        apiRequest(statsPendingUrl),
+        apiRequest(statsPartialUrl),
+        apiRequest(statsTotalUrl),
+      ]);
+
       const data = Array.isArray(res.data) ? res.data : [];
       setBookings(data);
-      setTotal(res.pagination?.total || data.length);
 
-      const today = new Date().toISOString().split('T')[0];
-      const checkedInToday = data.filter(b => 
-        b.status === 'checked_in' && b.dates?.actualCheckIn?.startsWith(today)
-      ).length;
+      // 🔥 FIX 2: backend sends totalItems — fallback to total for safety
+      const totalItems = res.pagination?.totalItems ?? res.pagination?.total ?? data.length;
+      setTotal(totalItems);
 
-      const pendingPayments = data.filter(b => 
-        ['pending', 'partially_paid'].includes(b.paymentStatus) &&
-        ['confirmed', 'checked_in'].includes(b.status)
-      ).length;
-
-      setStats({ totalBookings: res.pagination?.total || data.length, checkedInToday, pendingPayments });
+      setStats({
+        totalBookings:   resTotal.pagination?.totalItems    ?? resTotal.pagination?.total    ?? 0,
+        checkedInToday:  resCheckedIn.pagination?.totalItems ?? resCheckedIn.pagination?.total ?? 0,
+        pendingPayments: (resPending.pagination?.totalItems  ?? resPending.pagination?.total  ?? 0)
+                       + (resPartial.pagination?.totalItems  ?? resPartial.pagination?.total  ?? 0),
+      });
     } catch (err) {
       console.error(err);
     } finally {
@@ -79,7 +90,8 @@ export default function BookingsPage() {
 
   useEffect(() => { fetchBookings(); }, [fetchBookings]);
 
-  useEffect(() => { setPage(1); }, [searchTerm, statusFilter, paymentFilter, dateFrom, dateTo, limit]);
+  // Reset to page 1 when filters change
+  useEffect(() => { setPage(1); }, [searchTerm, statusFilter, paymentFilter, dateFrom, dateTo]);
 
   // Debounce search
   useEffect(() => {
@@ -87,154 +99,87 @@ export default function BookingsPage() {
     return () => clearTimeout(t);
   }, [searchTerm]);
 
-  const handleCheckIn = async (id) => { 
-    setActionLoading(id); 
-    try { 
-      await apiRequest(`/bookings/${id}/checkin`, {method:'POST'}); 
-      fetchBookings(); 
-    } catch(e) {
-      alert(e.message);
-    } finally {
-      setActionLoading(null);
-    } 
+  const handleCheckIn = async (id) => {
+    setActionLoading(id);
+    try { await apiRequest(`/bookings/${id}/checkin`, { method: 'POST' }); fetchBookings(); }
+    catch (e) { alert(e.message); }
+    finally { setActionLoading(null); }
   };
 
-  const handleCheckOut = async (id) => { 
-    if(!confirm('Confirm check-out?')) return; 
-    setActionLoading(id); 
-    try { 
-      await apiRequest(`/bookings/${id}/checkout`, {method:'POST'}); 
-      fetchBookings(); 
-    } catch(e) {
-      alert(e.message);
-    } finally {
-      setActionLoading(null);
-    } 
+  const handleCheckOut = async (id) => {
+    if (!confirm('Confirm check-out?')) return;
+    setActionLoading(id);
+    try { await apiRequest(`/bookings/${id}/checkout`, { method: 'POST' }); fetchBookings(); }
+    catch (e) { alert(e.message); }
+    finally { setActionLoading(null); }
   };
 
-  const handleCancel = async (id) => { 
-    if(!confirm('Cancel booking?')) return; 
-    try { 
-      await apiRequest(`/bookings/${id}/cancel`, {method:'POST'}); 
-      fetchBookings(); 
-    } catch(e) {
-      alert(e.message);
-    } 
+  const handleCancel = async (id) => {
+    if (!confirm('Cancel booking?')) return;
+    try { await apiRequest(`/bookings/${id}/cancel`, { method: 'POST' }); fetchBookings(); }
+    catch (e) { alert(e.message); }
   };
 
-  const handleNoShow = async (id) => { 
-    if(!confirm('Mark as no-show?')) return; 
-    try { 
-      await apiRequest(`/bookings/${id}/no-show`, {method:'POST'}); 
-      fetchBookings(); 
-    } catch(e) {
-      alert(e.message);
-    } 
+  const handleNoShow = async (id) => {
+    if (!confirm('Mark as no-show?')) return;
+    try { await apiRequest(`/bookings/${id}/no-show`, { method: 'POST' }); fetchBookings(); }
+    catch (e) { alert(e.message); }
   };
 
   const handleDelete = async (id, bookingNumber) => {
     if (!confirm(`Delete booking ${bookingNumber}? This cannot be undone.`)) return;
     setActionLoading(id);
-    try {
-      await apiRequest(`/bookings/${id}`, { method: 'DELETE' });
-      fetchBookings();
-    } catch (e) {
-      alert(e.message);
-    } finally {
-      setActionLoading(null);
-    }
+    try { await apiRequest(`/bookings/${id}`, { method: 'DELETE' }); fetchBookings(); }
+    catch (e) { alert(e.message); }
+    finally { setActionLoading(null); }
   };
 
   const clearFilters = () => {
-    setSearchTerm(''); 
-    setStatusFilter(''); 
-    setPaymentFilter(''); 
-    setDateFrom(''); 
-    setDateTo(''); 
-    setPage(1);
+    setSearchTerm(''); setStatusFilter(''); setPaymentFilter('');
+    setDateFrom(''); setDateTo(''); setPage(1);
   };
 
   const totalPages = Math.ceil(total / limit);
 
-  // 🔥 Auto-populate current financial year
+  // GST helpers
   const populateFinancialYear = () => {
     const today = new Date();
-    const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth(); // 0 = Jan, 3 = Apr
-
-    let fyStart, fyEnd;
-
-    if (currentMonth >= 3) { // April to Dec → current FY
-      fyStart = `${currentYear}-04-01`;
-      fyEnd   = `${currentYear + 1}-03-31`;
-    } else { // Jan to Mar → previous FY
-      fyStart = `${currentYear - 1}-04-01`;
-      fyEnd   = `${currentYear}-03-31`;
-    }
-
-    setGstDateFrom(fyStart);
-    setGstDateTo(fyEnd);
+    const y = today.getFullYear();
+    const m = today.getMonth();
+    if (m >= 3) { setGstDateFrom(`${y}-04-01`); setGstDateTo(`${y + 1}-03-31`); }
+    else        { setGstDateFrom(`${y - 1}-04-01`); setGstDateTo(`${y}-03-31`); }
   };
 
-  // 🔥 Download GST Report
   const handleGSTReportDownload = async (format) => {
-    if (!gstDateFrom || !gstDateTo) {
-      alert('Please select both start and end dates');
-      return;
-    }
-
-    if (new Date(gstDateFrom) > new Date(gstDateTo)) {
-      alert('Start date cannot be after end date');
-      return;
-    }
-
+    if (!gstDateFrom || !gstDateTo) { alert('Please select both start and end dates'); return; }
+    if (new Date(gstDateFrom) > new Date(gstDateTo)) { alert('Start date cannot be after end date'); return; }
     setGstDownloading(true);
-
     try {
       const url = `/reports/gst?hotelId=${hotelId}&dateFrom=${gstDateFrom}&dateTo=${gstDateTo}&format=${format}`;
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}${url}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}${url}`,
+        { method: 'GET', headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+      );
       if (!response.ok) {
         const errText = await response.text();
-        let errorMessage = 'Failed to generate report';
-        try {
-          const errJson = JSON.parse(errText);
-          errorMessage = errJson.message || errorMessage;
-        } catch (e) {
-          errorMessage = errText || errorMessage;
-        }
-        throw new Error(errorMessage);
+        try { throw new Error(JSON.parse(errText).message); } catch { throw new Error(errText || 'Failed'); }
       }
-
       const blob = await response.blob();
-      
-      // Check if the blob is actually an error message
       if (blob.type === 'application/json') {
-        const text = await blob.text();
-        const json = JSON.parse(text);
+        const json = JSON.parse(await blob.text());
         throw new Error(json.message || 'Server error');
       }
-
-      const downloadUrl = window.URL.createObjectURL(blob);
+      const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.setAttribute('download', `GST_Report_${gstDateFrom}_to_${gstDateTo}.${format === 'pdf' ? 'pdf' : 'xlsx'}`);
+      link.href = blobUrl;
+      link.download = `GST_Report_${gstDateFrom}_to_${gstDateTo}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
       document.body.appendChild(link);
       link.click();
-      
-      // Clean up
       link.parentNode.removeChild(link);
-      window.URL.revokeObjectURL(downloadUrl);
-      
+      window.URL.revokeObjectURL(blobUrl);
       alert('✅ GST Report downloaded successfully!');
       setShowGSTModal(false);
     } catch (error) {
-      console.error('GST Report Error:', error);
       alert('❌ ' + error.message);
     } finally {
       setGstDownloading(false);
@@ -243,37 +188,25 @@ export default function BookingsPage() {
 
   return (
     <div className="space-y-10">
-      {/* Top Header */}
+      {/* Header */}
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-4xl font-bold tracking-tight text-gray-900">Bookings</h1>
           <p className="text-gray-600 mt-1">Real-time overview of all reservations • {user?.hotel?.name}</p>
         </div>
-
         <div className="flex items-center gap-4">
-          {/* 🔥 GST Report Button */}
           <Link href="/hotel-admin/bookings/gst-report">
-          <button
-            className="flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-medium transition-all shadow-sm"
-          >
-            <FileText className="h-4 w-4" />
-            GST Report
-          </button>
+            <button className="flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-medium transition-all shadow-sm">
+              <FileText className="h-4 w-4" /> GST Report
+            </button>
           </Link>
-
-          <button
-            onClick={fetchBookings}
-            className="text-black flex items-center gap-2 px-5 py-3 bg-white border border-gray-300 rounded-2xl text-sm font-medium hover:bg-gray-50 transition-all"
-          >
+          <button onClick={fetchBookings}
+            className="text-black flex items-center gap-2 px-5 py-3 bg-white border border-gray-300 rounded-2xl text-sm font-medium hover:bg-gray-50 transition-all">
             <RefreshCw className="h-4 w-4" /> Refresh
           </button>
-
-          <Link
-            href="/hotel-admin/bookings/create"
-            className="flex items-center gap-3 bg-teal-600 hover:bg-teal-700 text-white font-semibold px-7 py-3 rounded-2xl shadow-lg transition-all active:scale-95"
-          >
-            <Plus className="h-5 w-5" />
-            New Booking
+          <Link href="/hotel-admin/bookings/create"
+            className="flex items-center gap-3 bg-teal-600 hover:bg-teal-700 text-white font-semibold px-7 py-3 rounded-2xl shadow-lg transition-all active:scale-95">
+            <Plus className="h-5 w-5" /> New Booking
           </Link>
         </div>
       </div>
@@ -294,27 +227,19 @@ export default function BookingsPage() {
         </div>
       </div>
 
-      {/* Filters Bar */}
+      {/* Filters */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 text-black">
         <div className="flex flex-wrap gap-4 items-end">
           <div className="flex-1 min-w-[300px]">
             <div className="relative">
               <Search className="absolute left-5 top-4 h-5 w-5 text-gray-400" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+              <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search booking, guest name or phone..."
-                className="w-full pl-14 pr-6 py-4 bg-gray-50 border border-transparent focus:border-teal-500 rounded-2xl text-base outline-none"
-              />
+                className="w-full pl-14 pr-6 py-4 bg-gray-50 border border-transparent focus:border-teal-500 rounded-2xl text-base outline-none" />
             </div>
           </div>
-
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-6 py-4 bg-gray-50 border border-transparent focus:border-teal-500 rounded-2xl text-sm outline-none min-w-[160px]"
-          >
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-6 py-4 bg-gray-50 border border-transparent focus:border-teal-500 rounded-2xl text-sm outline-none min-w-[160px]">
             <option value="">All Status</option>
             <option value="pending">Pending</option>
             <option value="confirmed">Confirmed</option>
@@ -324,46 +249,27 @@ export default function BookingsPage() {
             <option value="cancelled">Cancelled</option>
             <option value="no_show">No Show</option>
           </select>
-
-          <select
-            value={paymentFilter}
-            onChange={(e) => setPaymentFilter(e.target.value)}
-            className="px-6 py-4 bg-gray-50 border border-transparent focus:border-teal-500 rounded-2xl text-sm outline-none min-w-[160px]"
-          >
+          <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}
+            className="px-6 py-4 bg-gray-50 border border-transparent focus:border-teal-500 rounded-2xl text-sm outline-none min-w-[160px]">
             <option value="">All Payment</option>
             <option value="pending">Pending</option>
             <option value="partially_paid">Partially Paid</option>
             <option value="paid">Paid</option>
           </select>
-
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="px-6 py-4 bg-gray-50 border border-transparent focus:border-teal-500 rounded-2xl text-sm outline-none"
-            placeholder="From"
-          />
-
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="px-6 py-4 bg-gray-50 border border-transparent focus:border-teal-500 rounded-2xl text-sm outline-none"
-            placeholder="To"
-          />
-
+          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+            className="px-6 py-4 bg-gray-50 border border-transparent focus:border-teal-500 rounded-2xl text-sm outline-none" />
+          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+            className="px-6 py-4 bg-gray-50 border border-transparent focus:border-teal-500 rounded-2xl text-sm outline-none" />
           {(searchTerm || statusFilter || paymentFilter || dateFrom || dateTo) && (
-            <button
-              onClick={clearFilters}
-              className="px-6 py-4 bg-red-50 text-red-700 hover:bg-red-100 rounded-2xl text-sm font-medium transition-all flex items-center gap-2"
-            >
+            <button onClick={clearFilters}
+              className="px-6 py-4 bg-red-50 text-red-700 hover:bg-red-100 rounded-2xl text-sm font-medium transition-all flex items-center gap-2">
               <X className="h-4 w-4" /> Clear
             </button>
           )}
         </div>
       </div>
 
-      {/* Bookings Table */}
+      {/* Table */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-20">
@@ -381,14 +287,9 @@ export default function BookingsPage() {
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-8 py-5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Booking #</th>
-                    <th className="px-8 py-5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Guest</th>
-                    <th className="px-8 py-5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Room</th>
-                    <th className="px-8 py-5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Dates</th>
-                    <th className="px-8 py-5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount</th>
-                    <th className="px-8 py-5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                    <th className="px-8 py-5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Payment</th>
-                    <th className="px-8 py-5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+                    {['Booking #','Guest','Room','Dates','Amount','Status','Payment','Actions'].map(h => (
+                      <th key={h} className="px-8 py-5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">{h}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -408,12 +309,8 @@ export default function BookingsPage() {
                         <div className="text-xs text-gray-500">{b.room?.roomType}</div>
                       </td>
                       <td className="px-8 py-6">
-                        <div className="text-sm text-gray-900">
-                          {new Date(b.dates?.checkIn).toLocaleDateString('en-GB')}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          to {new Date(b.dates?.checkOut).toLocaleDateString('en-GB')}
-                        </div>
+                        <div className="text-sm text-gray-900">{new Date(b.dates?.checkIn).toLocaleDateString('en-GB')}</div>
+                        <div className="text-xs text-gray-500">to {new Date(b.dates?.checkOut).toLocaleDateString('en-GB')}</div>
                       </td>
                       <td className="px-8 py-6">
                         <div className="font-semibold text-gray-900">₹{b.pricing?.total?.toLocaleString()}</div>
@@ -421,47 +318,29 @@ export default function BookingsPage() {
                           <div className="text-xs text-emerald-600">Paid: ₹{b.advancePayment?.toLocaleString()}</div>
                         )}
                       </td>
-                      <td className="px-8 py-6">
-                        <StatusBadge status={b.status} />
-                      </td>
-                      <td className="px-8 py-6">
-                        <PaymentBadge status={b.paymentStatus} />
-                      </td>
+                      <td className="px-8 py-6"><StatusBadge status={b.status} /></td>
+                      <td className="px-8 py-6"><PaymentBadge status={b.paymentStatus} /></td>
                       <td className="px-8 py-6">
                         <div className="flex items-center gap-2">
                           {b.status === 'confirmed' && (
-                            <button
-                              onClick={() => handleCheckIn(b._id)}
-                              disabled={actionLoading === b._id}
-                              className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded-xl transition disabled:opacity-50"
-                            >
+                            <button onClick={() => handleCheckIn(b._id)} disabled={actionLoading === b._id}
+                              className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded-xl transition disabled:opacity-50">
                               {actionLoading === b._id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Check-In'}
                             </button>
                           )}
                           {b.status === 'checked_in' && (
-                            <button
-                              onClick={() => handleCheckOut(b._id)}
-                              disabled={actionLoading === b._id}
-                              className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs font-medium rounded-xl transition disabled:opacity-50"
-                            >
+                            <button onClick={() => handleCheckOut(b._id)} disabled={actionLoading === b._id}
+                              className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs font-medium rounded-xl transition disabled:opacity-50">
                               {actionLoading === b._id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Check-Out'}
                             </button>
                           )}
-                          <Link
-                            href={`/hotel-admin/bookings/${b._id}`}
-                            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium rounded-xl transition"
-                          >
+                          <Link href={`/hotel-admin/bookings/${b._id}`}
+                            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium rounded-xl transition">
                             View
                           </Link>
-                          <button
-                            onClick={() => handleDelete(b._id, b.bookingNumber)}
-                            disabled={actionLoading === b._id}
-                            className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition disabled:opacity-50"
-                            title="Delete Booking"
-                          >
-                            {actionLoading === b._id
-                              ? <Loader2 className="h-4 w-4 animate-spin" />
-                              : <Trash2 className="h-4 w-4" />}
+                          <button onClick={() => handleDelete(b._id, b.bookingNumber)} disabled={actionLoading === b._id}
+                            className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition disabled:opacity-50" title="Delete Booking">
+                            {actionLoading === b._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                           </button>
                         </div>
                       </td>
@@ -471,32 +350,34 @@ export default function BookingsPage() {
               </table>
             </div>
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="px-8 py-6 bg-gray-50 border-t flex items-center justify-between text-sm">
+            {/* 🔥 FIX 3: total > 0 instead of totalPages > 1 — always visible */}
+            {total > 0 && (
+              <div className="px-8 py-6 bg-gray-50 border-t flex items-center justify-between text-sm text-black">
                 <div className="text-gray-600">
-                  Showing <span className="font-medium text-gray-900">{(page-1)*limit + 1}</span> to{' '}
-                  <span className="font-medium text-gray-900">{Math.min(page*limit, total)}</span> of{' '}
-                  <span className="font-medium text-gray-900">{total}</span> bookings
+                  Showing{' '}
+                  <span className="font-semibold text-gray-900">{(page - 1) * limit + 1}</span>
+                  {' '}–{' '}
+                  <span className="font-semibold text-gray-900">{Math.min(page * limit, total)}</span>
+                  {' '}of{' '}
+                  <span className="font-semibold text-gray-900">{total}</span> bookings
                 </div>
-
-                <div className="flex items-center gap-6">
-                  <button 
-                    onClick={() => setPage(p => Math.max(1, p-1))} 
-                    disabled={page===1} 
-                    className="p-3 hover:bg-white rounded-2xl disabled:opacity-40 transition-all"
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="flex items-center gap-1 px-4 py-2 bg-white border border-gray-200 rounded-xl hover:bg-gray-100 disabled:opacity-40 transition-all text-sm font-medium"
                   >
-                    <ChevronLeft className="h-5 w-5" />
+                    <ChevronLeft className="h-4 w-4" /> Prev
                   </button>
-
-                  <div className="font-medium text-gray-900">Page {page} of {totalPages}</div>
-
-                  <button 
-                    onClick={() => setPage(p => Math.min(totalPages, p+1))} 
-                    disabled={page===totalPages} 
-                    className="p-3 hover:bg-white rounded-2xl disabled:opacity-40 transition-all"
+                  <span className="font-semibold text-gray-900 px-2">
+                    Page {page} of {totalPages || 1}
+                  </span>
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page >= totalPages}
+                    className="flex items-center gap-1 px-4 py-2 bg-white border border-gray-200 rounded-xl hover:bg-gray-100 disabled:opacity-40 transition-all text-sm font-medium"
                   >
-                    <ChevronRight className="h-5 w-5" />
+                    Next <ChevronRight className="h-4 w-4" />
                   </button>
                 </div>
               </div>
@@ -505,30 +386,20 @@ export default function BookingsPage() {
         )}
       </div>
 
-      {/* 🔥 GST Report Modal */}
+      {/* GST Modal */}
       {showGSTModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-8 relative animate-in fade-in zoom-in-95 duration-200">
-            
-            {/* Header */}
+          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-8 relative">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">GST Revenue Report</h2>
                 <p className="text-sm text-gray-600 mt-1">Download tax report for filing</p>
               </div>
-              <button
-                onClick={() => {
-                  setShowGSTModal(false);
-                  setGstDateFrom('');
-                  setGstDateTo('');
-                }}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              >
+              <button onClick={() => { setShowGSTModal(false); setGstDateFrom(''); setGstDateTo(''); }}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                 <X className="h-5 w-5 text-gray-600" />
               </button>
             </div>
-
-            {/* Info Note */}
             <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-6">
               <div className="flex gap-3">
                 <FileText className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
@@ -543,92 +414,39 @@ export default function BookingsPage() {
                 </div>
               </div>
             </div>
-
-            {/* Date Inputs */}
-            <div className="grid grid-cols-2 gap-5 mb-8">
+            <div className="grid grid-cols-2 gap-5 mb-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  From Date <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  value={gstDateFrom}
-                  onChange={(e) => setGstDateFrom(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-2xl focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 outline-none text-gray-900"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-2">From Date <span className="text-red-500">*</span></label>
+                <input type="date" value={gstDateFrom} onChange={(e) => setGstDateFrom(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-2xl focus:border-emerald-600 outline-none text-gray-900" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  To Date <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  value={gstDateTo}
-                  onChange={(e) => setGstDateTo(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-2xl focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 outline-none text-gray-900"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-2">To Date <span className="text-red-500">*</span></label>
+                <input type="date" value={gstDateTo} onChange={(e) => setGstDateTo(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-2xl focus:border-emerald-600 outline-none text-gray-900" />
               </div>
             </div>
-
-            {/* Quick Filters */}
-            <div className="flex gap-3 mb-8">
-              <button
-                onClick={populateFinancialYear}
-                className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-xl transition-colors"
-              >
-                Current FY
-              </button>
-              <button
-                onClick={() => {
-                  const today = new Date();
-                  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-                  const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-                  setGstDateFrom(firstDay.toISOString().split('T')[0]);
-                  setGstDateTo(lastDay.toISOString().split('T')[0]);
-                }}
-                className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-xl transition-colors"
-              >
-                This Month
-              </button>
-              <button
-                onClick={() => {
-                  const today = new Date();
-                  const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                  const lastDay = new Date(today.getFullYear(), today.getMonth(), 0);
-                  setGstDateFrom(lastMonth.toISOString().split('T')[0]);
-                  setGstDateTo(lastDay.toISOString().split('T')[0]);
-                }}
-                className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-xl transition-colors"
-              >
-                Last Month
-              </button>
+            <div className="flex gap-3 mb-6">
+              {[
+                { label: 'Current FY', fn: populateFinancialYear },
+                { label: 'This Month', fn: () => { const t = new Date(); setGstDateFrom(new Date(t.getFullYear(), t.getMonth(), 1).toISOString().split('T')[0]); setGstDateTo(new Date(t.getFullYear(), t.getMonth()+1, 0).toISOString().split('T')[0]); }},
+                { label: 'Last Month', fn: () => { const t = new Date(); setGstDateFrom(new Date(t.getFullYear(), t.getMonth()-1, 1).toISOString().split('T')[0]); setGstDateTo(new Date(t.getFullYear(), t.getMonth(), 0).toISOString().split('T')[0]); }},
+              ].map(({ label, fn }) => (
+                <button key={label} onClick={fn}
+                  className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-xl transition-colors">
+                  {label}
+                </button>
+              ))}
             </div>
-
-            {/* Download Buttons */}
             <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={() => handleGSTReportDownload('pdf')}
-                disabled={gstDownloading || !gstDateFrom || !gstDateTo}
-                className="flex items-center justify-center gap-3 py-4 px-6 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
-              >
-                {gstDownloading ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  <FileText className="h-5 w-5" />
-                )}
+              <button onClick={() => handleGSTReportDownload('pdf')} disabled={gstDownloading || !gstDateFrom || !gstDateTo}
+                className="flex items-center justify-center gap-3 py-4 px-6 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg">
+                {gstDownloading ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileText className="h-5 w-5" />}
                 Download PDF
               </button>
-
-              <button
-                onClick={() => handleGSTReportDownload('excel')}
-                disabled={gstDownloading || !gstDateFrom || !gstDateTo}
-                className="flex items-center justify-center gap-3 py-4 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
-              >
-                {gstDownloading ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  <FileSpreadsheet className="h-5 w-5" />
-                )}
+              <button onClick={() => handleGSTReportDownload('excel')} disabled={gstDownloading || !gstDateFrom || !gstDateTo}
+                className="flex items-center justify-center gap-3 py-4 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg">
+                {gstDownloading ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileSpreadsheet className="h-5 w-5" />}
                 Download Excel
               </button>
             </div>
@@ -639,16 +457,15 @@ export default function BookingsPage() {
   );
 }
 
-/* Badge Components */
 function StatusBadge({ status }) {
   const map = {
-    pending: 'bg-gray-100 text-gray-700',
-    confirmed: 'bg-teal-100 text-teal-700 border border-teal-200',
-    reserved: 'bg-blue-100 text-blue-700 border border-blue-200',
-    checked_in: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
+    pending:     'bg-gray-100 text-gray-700',
+    confirmed:   'bg-teal-100 text-teal-700 border border-teal-200',
+    reserved:    'bg-blue-100 text-blue-700 border border-blue-200',
+    checked_in:  'bg-emerald-100 text-emerald-700 border border-emerald-200',
     checked_out: 'bg-zinc-100 text-zinc-700',
-    cancelled: 'bg-red-100 text-red-700',
-    no_show: 'bg-amber-100 text-amber-700',
+    cancelled:   'bg-red-100 text-red-700',
+    no_show:     'bg-amber-100 text-amber-700',
   };
   return (
     <span className={`inline-block px-4 py-1 text-xs font-semibold rounded-full uppercase tracking-wider ${map[status] || 'bg-gray-100'}`}>
@@ -659,9 +476,9 @@ function StatusBadge({ status }) {
 
 function PaymentBadge({ status }) {
   const map = {
-    pending: 'bg-orange-100 text-orange-700',
+    pending:        'bg-orange-100 text-orange-700',
     partially_paid: 'bg-amber-100 text-amber-700',
-    paid: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
+    paid:           'bg-emerald-100 text-emerald-700 border border-emerald-200',
   };
   return (
     <span className={`inline-block px-4 py-1 text-xs font-semibold rounded-full uppercase tracking-wider ${map[status] || 'bg-gray-100'}`}>
