@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext'
 import { USER_ROLES, ORDER_STATUS } from '@/utils/constants'
 import { apiRequest } from '@/services/api'
 import { connectPOSSocket, disconnectPOSSocket } from '@/services/posSocket'
-import { Loader2, AlertCircle, Eye, CheckCircle, XCircle, Download, Calendar, RefreshCw, DollarSign } from 'lucide-react'
+import { Loader2, AlertCircle, Eye, CheckCircle, XCircle, Download, Calendar, RefreshCw, DollarSign, PlusCircle, CreditCard } from 'lucide-react'
 import { format } from 'date-fns'
 import Link from 'next/link'
 
@@ -75,6 +75,7 @@ export default function POSOrdersPage() {
 
     socket.on('order:created', fetchOrders)
     socket.on('order:updated', fetchOrders)
+    socket.on('order:paid', fetchOrders) // ✅ payment hone pe bhi list refresh ho
 
     return () => disconnectPOSSocket()
   }, [startDate, endDate, statusFilter])
@@ -236,7 +237,14 @@ export default function POSOrdersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {filteredOrders.map(order => (
+                {filteredOrders.map(order => {
+                  // ✅ Payment/hold status check
+                  const isPaid = order.payment?.status === 'PAID'
+                  const isCancelled = order.status === 'cancelled'
+                  const isCompleted = order.status === 'completed'
+                  const canModify = !isPaid && !isCancelled && !isCompleted
+
+                  return (
                   <tr key={order._id} className="hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap font-medium">
                       #{order.orderNumber || order._id.slice(-6)}
@@ -251,7 +259,15 @@ export default function POSOrdersPage() {
                       {format(new Date(order.createdAt), 'dd MMM yyyy, HH:mm')}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
-                      {getStatusBadge(order.status)}
+                      <div className="flex flex-col items-center gap-1">
+                        {getStatusBadge(order.status)}
+                        {/* ✅ Payment badge — HOLD orders yahan pehchane jaate hain */}
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                          isPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {isPaid ? 'PAID' : 'UNPAID (HOLD)'}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right font-medium">
                       ₹{order.pricing?.total?.toLocaleString() || 0}
@@ -261,6 +277,29 @@ export default function POSOrdersPage() {
                         <Link href={`/hotel-admin/pos/orders/${order._id}`} className="text-blue-600 hover:text-blue-800">
                           <Eye className="h-5 w-5" />
                         </Link>
+
+                        {/* ✅ NEW: Add Items — sirf unpaid/active orders ke liye */}
+                        {canModify && (
+                          <Link
+                            href={`/hotel-admin/pos/orders/new?addToOrder=${order._id}`}
+                            className="text-orange-600 hover:text-orange-800"
+                            title="Add more items to this order"
+                          >
+                            <PlusCircle className="h-5 w-5" />
+                          </Link>
+                        )}
+
+                        {/* ✅ NEW: Final Checkout / Payment — sirf unpaid orders ke liye */}
+                        {canModify && (
+                          <Link
+                            href={`/hotel-admin/pos/checkout/${order._id}`}
+                            className="text-teal-600 hover:text-teal-800"
+                            title="Final payment / checkout"
+                          >
+                            <CreditCard className="h-5 w-5" />
+                          </Link>
+                        )}
+
                         {order.status !== 'cancelled' && order.status !== 'served' && (
                           <>
                             {order.status === 'ready' && (
@@ -283,7 +322,8 @@ export default function POSOrdersPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>

@@ -169,29 +169,37 @@ export default function InvoicePage() {
           {/* Guest & Booking Details */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-10 bg-gray-50">
             {/* Bill To */}
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                Billed To
-              </div>
-              <div className="space-y-2">
-                <div className="text-xl font-bold text-gray-900">{booking.guest?.name}</div>
-                <div className="flex items-center gap-2 text-gray-600">
-                  <Phone className="h-4 w-4" />
-                  <span>{booking.guest?.phone}</span>
-                </div>
-                {booking.guest?.email && (
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Mail className="h-4 w-4" />
-                    <span>{booking.guest.email}</span>
-                  </div>
-                )}
-                {booking.guest?.idProof && (
-                  <div className="mt-3 pt-3 border-t text-xs text-gray-500">
-                    <span className="font-semibold">ID Proof:</span> {booking.guest.idProof.type.toUpperCase()} - {booking.guest.idProof.number}
-                  </div>
-                )}
-              </div>
-            </div>
+           {/* Bill To */}
+<div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+    Billed To
+  </div>
+  <div className="space-y-2">
+    <div className="text-xl font-bold text-gray-900">{booking.guest?.name}</div>
+    <div className="flex items-center gap-2 text-gray-600">
+      <Phone className="h-4 w-4" />
+      <span>{booking.guest?.phone}</span>
+    </div>
+    {booking.guest?.email && (
+      <div className="flex items-center gap-2 text-gray-600">
+        <Mail className="h-4 w-4" />
+        <span>{booking.guest.email}</span>
+      </div>
+    )}
+    {/* ✅ NEW: Customer GST Number */}
+    {booking.guest?.gstNumber && (
+      <div className="flex items-center gap-2 text-gray-600">
+        <span className="font-semibold text-gray-800">GSTIN:</span>
+        <span className="font-mono">{booking.guest.gstNumber}</span>
+      </div>
+    )}
+    {booking.guest?.idProof && (
+      <div className="mt-3 pt-3 border-t text-xs text-gray-500">
+        <span className="font-semibold">ID Proof:</span> {booking.guest.idProof.type.toUpperCase()} - {booking.guest.idProof.number}
+      </div>
+    )}
+  </div>
+</div>
 
             {/* Booking Details */}
             <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">

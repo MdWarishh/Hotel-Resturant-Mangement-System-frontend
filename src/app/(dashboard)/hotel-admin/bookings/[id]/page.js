@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft, User, Users, Phone, Mail, DoorOpen, Calendar, CreditCard,
   Download, LogOut, Loader2, X, Clock, UserCheck, Globe, Image as ImageIcon,
-  Tag, CheckCircle2, Banknote, Smartphone, AlertCircle
+  Tag, CheckCircle2, Banknote, Smartphone, AlertCircle, Receipt
 } from 'lucide-react';
 import { apiRequest } from '@/services/api';
 
@@ -200,6 +200,9 @@ export default function BookingDetailsPage() {
   /* ✅ Payment method badge in invoice */
   .pay-method-badge { display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:800; background:#f0fdf4; color:#166534; border:1.5px solid #166534; margin-top:4px; }
 
+  /* ✅ Customer GSTIN badge */
+  .cust-gstin { font-size:11px; font-weight:800; color:#111; background:#eff6ff; padding:2px 8px; border-left:3px solid #1d4ed8; margin-top:2px; display:inline-block; }
+
   table { width:100%; border-collapse:collapse; margin-bottom:20px; border:1.5px solid #111; }
   thead tr { background:#111; }
   thead th { padding:11px 12px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:1px; color:#fff; text-align:left; }
@@ -257,6 +260,7 @@ export default function BookingDetailsPage() {
     <div class="info-row"><span class="info-label">Name</span><span class="info-value">${booking.guest?.name || 'N/A'}</span></div>
     ${booking.guest?.phone ? `<div class="info-row"><span class="info-label">Phone</span><span class="info-value">${booking.guest.phone}</span></div>` : ''}
     ${booking.guest?.email ? `<div class="info-row"><span class="info-label">Email</span><span class="info-value">${booking.guest.email}</span></div>` : ''}
+    ${booking.guest?.gstNumber ? `<div class="info-row"><span class="info-label">GSTIN</span><span class="cust-gstin">${booking.guest.gstNumber}</span></div>` : ''}
     ${booking.guest?.idProof?.type ? `<div class="info-row"><span class="info-label">ID Proof</span><span class="info-value">${booking.guest.idProof.type.toUpperCase()} - ${booking.guest.idProof.number || ''}</span></div>` : ''}
     ${booking.source ? `<div class="info-row"><span class="info-label">Booked Via</span><span class="info-value">${booking.source}</span></div>` : ''}
     ${booking.additionalGuests?.length > 0 ? `
@@ -430,6 +434,8 @@ export default function BookingDetailsPage() {
               <Info label="Name" value={booking.guest?.name} />
               <Info label="Phone" value={booking.guest?.phone} icon={<Phone className="h-4 w-4" />} />
               <Info label="Email" value={booking.guest?.email || '—'} icon={<Mail className="h-4 w-4" />} />
+              {/* ✅ NEW: Customer GST Number */}
+              <Info label="GST Number" value={booking.guest?.gstNumber || '—'} icon={<Receipt className="h-4 w-4" />} />
 
               {booking.guest?.idProof && (
                 <div className="space-y-2">

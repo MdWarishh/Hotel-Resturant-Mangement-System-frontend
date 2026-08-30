@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { OrderProvider, useOrder } from '@/context/OrderContext';
 import MenuSection from './MenuSection';
 import CartSection from './CartSection';
@@ -14,6 +14,13 @@ import { UtensilsCrossed, Users, DoorOpen, AlertCircle, Loader2, Printer, Shoppi
 function NewOrderContent({ onOrderSuccess, requirePayment = true }) {
   const { order, startOrder, resetOrder } = useOrder();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // ✅ NEW: agar orders list se "Add Items" pe click karke aaye ho
+  const addToOrderId = searchParams.get('addToOrder');
+  const [existingOrderLoading, setExistingOrderLoading] = useState(!!addToOrderId);
+  const [existingOrderMeta, setExistingOrderMeta] = useState(null);
+
   const [orderType, setOrderType] = useState(null);
   const [tableNumber, setTableNumber] = useState('');
   const [roomNumber, setRoomNumber] = useState('');
@@ -34,6 +41,32 @@ const [availableRooms, setAvailableRooms] = useState([]);
 
     return () => disconnectPOSSocket();
   }, []);
+
+  // ✅ NEW: existing order fetch karke seedha cart screen pe le jao (order-type step skip)
+  useEffect(() => {
+    if (!addToOrderId) return;
+
+    const loadExistingOrder = async () => {
+      setExistingOrderLoading(true);
+      try {
+        const res = await apiRequest(`/pos/orders/${addToOrderId}`);
+        const existing = res.data.order;
+        setExistingOrderMeta(existing);
+
+        startOrder({
+          orderType: existing.orderType,
+          tableNumber: existing.orderType === 'dine-in' ? existing.tableNumber : undefined,
+          room: existing.orderType === 'room-service' ? (existing.room?._id || existing.room) : undefined,
+        });
+      } catch (err) {
+        setErrors({ general: 'Failed to load order for adding items' });
+      } finally {
+        setExistingOrderLoading(false);
+      }
+    };
+
+    loadExistingOrder();
+  }, [addToOrderId]);
   
 
   // Fetch tables when Dine-In is selected
@@ -168,6 +201,16 @@ useEffect(() => {
   const handlePaymentCancel = () => {
     setShowPayment(false);
   };
+
+  // ✅ NEW: existing order fetch ho raha ho to loader dikhao (order-type screen na dikhe)
+  if (!order && existingOrderLoading) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center bg-white dark:bg-gray-800 p-8">
+        <Loader2 className="h-10 w-10 animate-spin text-[rgb(0,173,181)] mb-4" />
+        <p className="text-gray-600 dark:text-gray-400">Loading order...</p>
+      </div>
+    );
+  }
 
   // Step 1: Order Type Selection
   if (!order) {
@@ -307,11 +350,13 @@ useEffect(() => {
             }
           }}
           requirePayment={requirePayment}
+          existingOrderId={addToOrderId}
+          existingOrderNumber={existingOrderMeta?.orderNumber}
         />
       </div>
 
-      {/* Payment Modal */}
-      {showPayment && createdOrder && (
+      {/* Payment Modal — sirf normal new-order flow ke liye, add-items mode mein nahi chalega */}
+      {!addToOrderId && showPayment && createdOrder && (
         <PaymentModal
           order={createdOrder}
           onClose={handlePaymentCancel}

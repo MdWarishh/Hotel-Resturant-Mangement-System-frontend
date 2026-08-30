@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import {
   ArrowLeft, Building2, DoorOpen, User, Mail, Phone, CreditCard,
   Users, Calendar, Loader2, AlertCircle, CheckCircle2, Info, Upload, Clock,
-  DollarSign, Plus, Trash2, Tag
+  DollarSign, Plus, Trash2, Tag, Receipt
 } from 'lucide-react';
 
 // ── Inline error component ──
@@ -40,6 +40,7 @@ export default function CreateBookingPage() {
     guestName: '',
     guestEmail: '',
     guestPhone: '',
+    guestGSTNumber: '', // ✅ NEW: customer GST number
     idProofType: 'aadhar',
     idProofNumber: '',
     idProofImage: null,
@@ -281,6 +282,7 @@ export default function CreateBookingPage() {
           name: form.guestName.trim(),
           email: form.guestEmail.trim() || undefined,
           phone: form.guestPhone.trim(),
+          gstNumber: form.guestGSTNumber.trim() || undefined, // ✅ NEW: customer GST
           idProof: {
             type: form.idProofType,
             number: form.idProofNumber,
@@ -470,6 +472,24 @@ export default function CreateBookingPage() {
                         className={`text-black w-full px-5 py-3.5 border rounded-xl focus:border-teal-500 focus:ring-teal-200 ${errors.guestPhone ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
                       />
                       <FieldError message={errors.guestPhone} />
+                    </div>
+                  </div>
+
+                  {/* ✅ NEW: Guest GST Number */}
+                  <div>
+                    <label className="block text-base font-medium text-gray-800 mb-2">
+                      GST Number <span className="text-gray-400 text-sm">(optional)</span>
+                    </label>
+                    <div className="relative">
+                      <Receipt className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                      <input
+                        type="text"
+                        name="guestGSTNumber"
+                        value={form.guestGSTNumber}
+                        onChange={handleChange}
+                        placeholder="e.g. 07AAACX1234H1Z5"
+                        className="text-black w-full pl-12 pr-5 py-3.5 border border-gray-300 rounded-xl focus:border-teal-500 focus:ring-teal-200 uppercase"
+                      />
                     </div>
                   </div>
 

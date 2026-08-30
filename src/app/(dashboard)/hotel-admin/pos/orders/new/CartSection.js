@@ -3,14 +3,14 @@
 import { useOrder } from '@/context/OrderContext';
 import { useRouter } from 'next/navigation';
 import SubmitOrder from './SubmitOrder';
-import { ShoppingCart, Minus, Plus, Trash2, Tag, Printer, AlertCircle, UtensilsCrossed } from 'lucide-react';
+import { ShoppingCart, Minus, Plus, Trash2, Tag, Printer, AlertCircle, UtensilsCrossed, CheckCircle } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import PaymentModal from '@/components/cashier/PaymentModal';
 import KotPrintButton from '@/app/(dashboard)/cashier/KotPrintButton/page';
 
-export default function CartSection({ onOrderSuccess, requirePayment = true }) {
-  const { order, addItem, removeItem, updateQuantity, applyDiscount, resetOrder } = useOrder();
+export default function CartSection({ onOrderSuccess, requirePayment = true, existingOrderId = null, existingOrderMeta = null }) {
+  const { order, addItem, removeItem, updateQuantity, applyDiscount, resetOrder, startOrder } = useOrder();
   const [showPayment, setShowPayment] = useState(false);
   const [discountCode, setDiscountCode] = useState('');
   const [discountError, setDiscountError] = useState(null);
@@ -18,33 +18,72 @@ export default function CartSection({ onOrderSuccess, requirePayment = true }) {
   const [showSuccess, setShowSuccess] = useState(false);
   const [createdOrder, setCreatedOrder] = useState(null);
   const { user } = useAuth();
- const router = useRouter();
+  const router = useRouter();
 
-// src/components/pos/CartSection.js
+  // ✅ NEW: Cashier khud decide karega — Hold (bina payment) ya Pay Now
+  const [paymentIntent, setPaymentIntent] = useState(requirePayment ? 'pay' : 'hold');
 
-const finalizeOrderSuccess = (orderData) => {
+  // ✅ NEW: existing-order mode ke liye — kitne rounds add hue, success message
+  const [addRoundsCount, setAddRoundsCount] = useState(0);
+  const [addSuccessMsg, setAddSuccessMsg] = useState(null);
+
+const finalizeOrderSuccess = (orderData, wasHeld = false) => {
   if (!orderData?._id) return;
 
-  const token = localStorage.getItem('token'); //
-  
-  // Base URL for the backend
-  const baseUrl = 'http://localhost:5000'; 
-  
-  // Pass the token in the URL so the new tab can be authorized
-  const pdfUrl = `${baseUrl}/api/pos/orders/${orderData._id}/invoice/pdf?token=${token}`;
-  
-  window.open(pdfUrl, '_blank');
+  if (!wasHeld) {
+    const token = localStorage.getItem('token');
+    const baseUrl = 'http://localhost:5000';
+    const pdfUrl = `${baseUrl}/api/pos/orders/${orderData._id}/invoice/pdf?token=${token}`;
+    window.open(pdfUrl, '_blank');
+  }
 
-  // Clear states and redirect
-  resetOrder(); //
+  resetOrder();
   setShowPayment(false);
   setCreatedOrder(null);
   setShowSuccess(false);
-  // If cashier, stay in cashier POS; if admin, stay in admin POS
+
+  if (wasHeld) {
     if (user?.role === 'cashier') {
-      router.push('/cashier/pos'); 
+      router.push('/cashier/pos/orders'); // ⚠️ apna actual cashier orders-list path check kar lena
+    } else {
+      router.push('/hotel-admin/pos/orders');
+    }
+  } else {
+    if (user?.role === 'cashier') {
+      router.push('/cashier/pos');
     } else {
       router.push('/hotel-admin/pos/orders/new');
+    }
+  }
+};
+
+  // ✅ NEW: Items add hone ke baad — order LIST pe nahi bhejenge, isi screen pe rakhenge
+  // taaki cashier 3-4 baar (jitni baar chahe) items add kar sake, tab tak jab tak khud "Finish" na daba de
+  const handleAddItemsSuccess = (updatedOrder) => {
+    setAddRoundsCount((c) => c + 1);
+    setAddSuccessMsg(
+      `Items added! Current order total: ₹${updatedOrder?.pricing?.total?.toFixed(2) ?? '—'}`
+    );
+
+    // Sirf cart (items list) clear karo — order type/table/room same rakho, taaki naye items daal sako
+    startOrder({
+      orderType: existingOrderMeta?.orderType,
+      tableNumber: existingOrderMeta?.orderType === 'dine-in' ? existingOrderMeta?.tableNumber : undefined,
+      room: existingOrderMeta?.orderType === 'room-service'
+        ? (existingOrderMeta?.room?._id || existingOrderMeta?.room)
+        : undefined,
+    });
+
+    setTimeout(() => setAddSuccessMsg(null), 4000);
+  };
+
+  // ✅ NEW: cashier khud decide kare kab finish karna hai — tabhi orders list pe wapas jayega
+  const handleFinishAddingItems = () => {
+    resetOrder();
+    if (user?.role === 'cashier') {
+      router.push('/cashier/pos/orders'); // ⚠️ apna actual cashier orders-list path check kar lena
+    } else {
+      router.push('/hotel-admin/pos/orders');
     }
   };
 
@@ -53,8 +92,31 @@ const finalizeOrderSuccess = (orderData) => {
     return (
       <div className="flex h-full flex-col items-center justify-center bg-white dark:bg-gray-800 p-8 text-center border-l border-gray-200 dark:border-gray-700">
         <ShoppingCart className="h-16 w-16 text-gray-400 mb-4" />
-        <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Your cart is empty</h3>
-        <p className="text-gray-500 dark:text-gray-400">Add items from the menu to get started</p>
+        <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+          {existingOrderId ? 'No items added yet' : 'Your cart is empty'}
+        </h3>
+        <p className="text-gray-500 dark:text-gray-400 mb-4">
+          {existingOrderId
+            ? `Add items to Order #${existingOrderMeta?.orderNumber || existingOrderId.slice(-6)}`
+            : 'Add items from the menu to get started'}
+        </p>
+
+        {/* ✅ existing-order mode mein — cart khali ho tab bhi Finish ka option rahe */}
+        {existingOrderId && (
+          <>
+            {addRoundsCount > 0 && (
+              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
+                {addSuccessMsg || `${addRoundsCount} round(s) of items added so far.`}
+              </div>
+            )}
+            <button
+              onClick={handleFinishAddingItems}
+              className="px-6 py-3 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700"
+            >
+              Finish & Back to Orders
+            </button>
+          </>
+        )}
       </div>
     );
   }
@@ -72,16 +134,9 @@ const finalizeOrderSuccess = (orderData) => {
   };
 
 const handlePaymentSuccess = (updatedOrder) => {
-  // 1. Close the modal immediately
   setShowPayment(false); 
-  
-  // 2. Clear the 'createdOrder' state so this ID is no longer active
   setCreatedOrder(null); 
-  
-  // 3. Reset the cart context
   resetOrder(); 
-
-  // 4. Trigger print or navigation
   window.open(`/api/pos/orders/${updatedOrder._id}/invoice/pdf`, '_blank');
 };
 
@@ -99,12 +154,24 @@ const handlePaymentSuccess = (updatedOrder) => {
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[rgb(0,173,181)]/10">
             <ShoppingCart className="h-5 w-5 text-[rgb(0,173,181)]" />
           </div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Order Cart</h3>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            {existingOrderId
+              ? `Adding to Order #${existingOrderMeta?.orderNumber || existingOrderId.slice(-6)}`
+              : 'Order Cart'}
+          </h3>
         </div>
         <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
           {items.length} item{items.length !== 1 ? 's' : ''}
         </span>
       </div>
+
+      {/* ✅ NEW: success banner har round ke baad */}
+      {existingOrderId && addSuccessMsg && (
+        <div className="mx-4 mt-3 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800 flex items-center gap-2">
+          <CheckCircle className="h-4 w-4 flex-shrink-0" />
+          {addSuccessMsg}
+        </div>
+      )}
 
       {/* Cart Items */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -262,66 +329,120 @@ const handlePaymentSuccess = (updatedOrder) => {
         })()}
 
         {/* Submit & Payment */}
- <div className="space-y-4">
-  {/* STEP 1: PLACE ORDER */}
-  {!createdOrder && (
-    <SubmitOrder
-      extraCharges={extraCharges.filter(c => c.label && Number(c.amount) > 0)}
-      onSuccess={(savedOrder) => {
-        setCreatedOrder(savedOrder);
-        if (requirePayment) {
-          setShowPayment(true);
-        } else {
-          // No payment needed → finish immediately
-          finalizeOrderSuccess(savedOrder);
-        }
-      }}
-    />
-  )}
+        <div className="space-y-4">
 
-  {/* STEP 2: CASH PAYMENT BUTTON (only if order created + payment needed) */}
-  {createdOrder && (
-  <KotPrintButton
-    orderId={createdOrder._id} 
-    orderNumber={createdOrder.orderNumber} 
-  />
-)}
-  {requirePayment && createdOrder && (
-    <button
-      onClick={() => setShowPayment(true)}
-      className="w-full py-3.5 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-medium transition-colors"
-    >
-      Proceed to Cash Payment
-    </button>
-  )}
+          {existingOrderId ? (
+            /* ══════════════════════════════════════════════
+               ✅ MODE: ADD ITEMS TO EXISTING (RUNNING) ORDER
+               Jitni baar chaho items add karo — khud "Finish" dabao tab list pe jaoge
+            ══════════════════════════════════════════════ */
+            <>
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                <span>
+                  Adding items to <strong>Order #{existingOrderMeta?.orderNumber || existingOrderId.slice(-6)}</strong>.
+                  Payment will be collected at final checkout.
+                </span>
+              </div>
+              <SubmitOrder
+                extraCharges={extraCharges.filter(c => c.label && Number(c.amount) > 0)}
+                existingOrderId={existingOrderId}
+                onSuccess={handleAddItemsSuccess}
+              />
 
-  {/* CASH PAYMENT MODAL */}
-  {showPayment && createdOrder && (
-    <PaymentModal
-      order={createdOrder}
-      onClose={() => setShowPayment(false)}
-      onSuccess={(updatedOrder) => {
-        finalizeOrderSuccess(updatedOrder);
-      }}
-    />
-  )}
-</div>
+              {/* ✅ Cashier jab tak Finish na daba de, yahi rahega — jitni baar chahe items add kar sakta hai */}
+              <button
+                onClick={handleFinishAddingItems}
+                className="w-full py-3 border-2 border-teal-600 text-teal-700 rounded-xl font-medium hover:bg-teal-50"
+              >
+                Finish & Back to Orders {addRoundsCount > 0 ? `(${addRoundsCount} round${addRoundsCount > 1 ? 's' : ''} added)` : ''}
+              </button>
+            </>
+          ) : (
+            /* ══════════════════════════════════════════════
+               NORMAL MODE: NAYA ORDER — HOLD ya PAY NOW
+            ══════════════════════════════════════════════ */
+            <>
+              {!createdOrder && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Order Mode
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentIntent('hold')}
+                      className={`py-3 rounded-xl font-medium border-2 transition-all ${
+                        paymentIntent === 'hold'
+                          ? 'border-orange-500 bg-orange-50 text-orange-700'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      ⏸ Hold Order
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentIntent('pay')}
+                      className={`py-3 rounded-xl font-medium border-2 transition-all ${
+                        paymentIntent === 'pay'
+                          ? 'border-[rgb(0,173,181)] bg-[rgb(0,173,181)]/10 text-[rgb(0,173,181)]'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      💳 Pay Now
+                    </button>
+                  </div>
+                  {paymentIntent === 'hold' && (
+                    <p className="text-xs text-orange-600 mt-2">
+                      Order kitchen mein chala jayega, payment baad mein final checkout pe hogi.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {!createdOrder && (
+                <SubmitOrder
+                  extraCharges={extraCharges.filter(c => c.label && Number(c.amount) > 0)}
+                  onSuccess={(savedOrder) => {
+                    setCreatedOrder(savedOrder);
+                    if (paymentIntent === 'pay') {
+                      setShowPayment(true);
+                    } else {
+                      finalizeOrderSuccess(savedOrder, true);
+                    }
+                  }}
+                />
+              )}
+
+              {createdOrder && (
+                <KotPrintButton
+                  orderId={createdOrder._id}
+                  orderNumber={createdOrder.orderNumber}
+                />
+              )}
+
+              {paymentIntent === 'pay' && createdOrder && (
+                <button
+                  onClick={() => setShowPayment(true)}
+                  className="w-full py-3.5 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-medium transition-colors"
+                >
+                  Proceed to Cash Payment
+                </button>
+              )}
+
+              {showPayment && createdOrder && (
+                <PaymentModal
+                  order={createdOrder}
+                  onClose={() => setShowPayment(false)}
+                  onSuccess={(updatedOrder) => {
+                    finalizeOrderSuccess(updatedOrder);
+                  }}
+                />
+              )}
+            </>
+          )}
+        </div>
       </div>
-
-      {/* Payment Modal */}
-      {/* {showPayment && createdOrder && (
-        <PaymentModal
-          order={createdOrder}
-          onClose={() => setShowPayment(false)}
-          onSuccess={(paymentData) => {
-            resetOrder();
-            setShowPayment(false);
-            setShowSuccess(true);
-            window.open(`/api/pos/orders/new/${createdOrder._id}/invoice/pdf`, '_blank');
-            if (onOrderSuccess) onOrderSuccess(createdOrder);
-          }}
-        />
-      )} */}
 
       {/* Success Confirmation */}
       {showSuccess && createdOrder && (
