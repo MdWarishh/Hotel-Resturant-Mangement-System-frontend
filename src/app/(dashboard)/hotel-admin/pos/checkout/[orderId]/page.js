@@ -10,14 +10,15 @@ import { USER_ROLES } from '@/utils/constants';
 /**
  * POS Checkout Screen
  * - Payment mandatory
- * - Inventory deduction trigger
+ * - Now allowed for both Hotel Admin and Cashier
  */
 export default function CheckoutPage() {
   const { orderId } = useParams();
   const router = useRouter();
   const { user } = useAuth();
 
-  const isReadOnly = user?.role === USER_ROLES.HOTEL_ADMIN;
+  // ✅ FIXED: ab admin bhi payment le sakta hai — sirf cancelled/completed orders read-only rahenge (order fetch hone ke baad handle hoga)
+  const isReadOnly = false;
 
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -44,7 +45,7 @@ export default function CheckoutPage() {
   }, [orderId]);
 
   /**
-   * Confirm checkout
+   * ✅ FIXED: Confirm checkout — ab sahi payment endpoint call hota hai
    */
   const handleCheckout = async () => {
     if (!paymentMode) {
@@ -57,10 +58,11 @@ export default function CheckoutPage() {
     try {
       setProcessing(true);
 
-      await apiRequest(`/pos/orders/${orderId}/checkout`, {
-        method: 'POST',
+      // ✅ FIXED: /checkout ki jagah /payment endpoint, aur field name 'mode' (backend jo expect karta hai)
+      await apiRequest(`/pos/orders/${orderId}/payment`, {
+        method: 'PATCH',
         body: JSON.stringify({
-          paymentMode,
+          mode: paymentMode,
         }),
       });
 
@@ -74,7 +76,7 @@ export default function CheckoutPage() {
 
   if (loading) {
     return (
-      <div className="p-6 text-sm text-gray-500">
+      <div className="p-6 text-sm text-black bg-white">
         Loading checkout…
       </div>
     );
@@ -82,24 +84,26 @@ export default function CheckoutPage() {
 
   if (!order) {
     return (
-      <div className="p-6 text-sm text-red-500">
+      <div className="p-6 text-sm text-red-500 bg-white">
         Order not found
       </div>
     );
   }
 
+  const alreadyPaid = order.payment?.status === 'PAID';
+
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-xl font-semibold mb-6">
+    <div className="p-6 max-w-2xl mx-auto bg-white text-black">
+      <h1 className="text-xl font-semibold mb-6 text-black">
         Checkout
       </h1>
 
       {/* Order Info */}
       <div className="mb-4">
-        <p className="font-medium">
+        <p className="font-medium text-black">
           Order #{order.orderNumber}
         </p>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-gray-600">
           {order.orderType === 'dine-in'
             ? `Table ${order.tableNumber}`
             : order.orderType}
@@ -111,18 +115,18 @@ export default function CheckoutPage() {
         {order.items.map((item) => (
           <div
             key={item._id}
-            className="flex justify-between px-4 py-2 border-b text-sm"
+            className="flex justify-between px-4 py-2 border-b text-sm text-black"
           >
             <span>
               {item.quantity} × {item.name}
             </span>
-            <span>₹{item.subtotal}</span>
+            <span className="font-medium">₹{item.subtotal}</span>
           </div>
         ))}
       </div>
 
       {/* Pricing */}
-      <div className="border rounded p-4 mb-6">
+      <div className="border rounded p-4 mb-6 text-black">
         <div className="flex justify-between text-sm mb-1">
           <span>Subtotal</span>
           <span>₹{order.pricing.subtotal}</span>
@@ -139,31 +143,38 @@ export default function CheckoutPage() {
         </div>
       </div>
 
-      {/* Payment */}
-      <PaymentSection
-        value={paymentMode}
-        onChange={setPaymentMode}
-        readOnly={isReadOnly}
-      />
+      {/* ✅ NEW: Agar pehle se paid hai to info dikhao, dobara payment mat lo */}
+      {alreadyPaid ? (
+        <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded text-emerald-700 text-sm font-medium">
+          ✓ This order is already paid via {order.payment?.mode || 'N/A'}.
+        </div>
+      ) : (
+        <>
+          {/* Payment */}
+          <PaymentSection
+            value={paymentMode}
+            onChange={setPaymentMode}
+            readOnly={isReadOnly}
+          />
 
-      {/* Error */}
-      {error && (
-        <p className="text-sm text-red-500 mb-3">
-          {error}
-        </p>
-      )}
+          {/* Error */}
+          {error && (
+            <p className="text-sm text-red-500 mb-3">
+              {error}
+            </p>
+          )}
 
-      {/* Confirm */}
-      {!isReadOnly && (
-        <button
-          disabled={processing || !paymentMode}
-          onClick={handleCheckout}
-          className="w-full py-3 bg-black text-white rounded disabled:opacity-50"
-        >
-          {processing
-            ? 'Processing…'
-            : 'Confirm Checkout'}
-        </button>
+          {/* Confirm */}
+          <button
+            disabled={processing || !paymentMode}
+            onClick={handleCheckout}
+            className="w-full py-3 bg-black text-white rounded disabled:opacity-50 font-medium"
+          >
+            {processing
+              ? 'Processing…'
+              : 'Confirm Checkout'}
+          </button>
+        </>
       )}
     </div>
   );

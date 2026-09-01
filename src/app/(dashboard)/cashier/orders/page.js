@@ -141,23 +141,29 @@ export default function RunningOrdersPage() {
                 onClick={() => router.push(`/cashier/orders/${order._id}`)}
                 className="bg-white dark:bg-gray-800 rounded-xl shadow-md border-2 border-gray-200 dark:border-gray-700 p-5 sm:p-6 cursor-pointer hover:border-[rgb(0,173,181)] hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02]"
               >
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white truncate">
-                      #{order.orderNumber || order._id.slice(-6)}
-                    </h3>
-                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1 font-medium">
-                      {order.tableNumber
-                        ? `Table ${order.tableNumber}`
-                        : order.room
-                        ? `Room ${order.room}`
-                        : 'Takeaway'}
-                    </p>
-                  </div>
-                  <div className="ml-2 flex-shrink-0">
-                    {getStatusBadge(order.status)}
-                  </div>
-                </div>
+              <div className="flex justify-between items-start mb-4">
+  <div className="flex-1 min-w-0">
+    <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white truncate">
+      #{order.orderNumber || order._id.slice(-6)}
+    </h3>
+    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1 font-medium">
+      {order.tableNumber
+        ? `Table ${order.tableNumber}`
+        : order.room
+        ? `Room ${order.room}`
+        : 'Takeaway'}
+    </p>
+  </div>
+  <div className="ml-2 flex-shrink-0 flex flex-col items-end gap-1">
+    {getStatusBadge(order.status)}
+    {/* ✅ NEW */}
+    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+      order.payment?.status === 'PAID' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+    }`}>
+      {order.payment?.status === 'PAID' ? 'PAID' : 'HOLD'}
+    </span>
+  </div>
+</div>
 
                 <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                   <div className="flex items-center gap-2 text-green-600 dark:text-green-400 font-bold text-lg sm:text-xl">

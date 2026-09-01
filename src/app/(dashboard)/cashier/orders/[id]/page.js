@@ -6,14 +6,17 @@ import { useOrder, OrderProvider } from '@/context/OrderContext'
 import { apiRequest } from '@/services/api'
 import { connectPOSSocket, disconnectPOSSocket } from '@/services/posSocket'
 import PaymentModal from '@/components/cashier/PaymentModal'
-import { Loader2, AlertCircle, Printer, ArrowLeft, DollarSign, Clock, Users, BedDouble, ShoppingCart, X } from 'lucide-react'
+import MenuSection from '../../../hotel-admin/pos/orders/new/MenuSection'
+import CartSection from '../../../hotel-admin/pos/orders/new/CartSection'
+import { Loader2, AlertCircle, Printer, ArrowLeft, DollarSign, Clock, Users, BedDouble, ShoppingCart, X, CreditCard, CheckCircle2 } from 'lucide-react'
 import { format } from 'date-fns'
+import KotPrintButton from '../../KotPrintButton/page'
 
 
 function OrderDetailContent() {
   const { id } = useParams()
   const router = useRouter()
-  const { addItem, updateQuantity, removeItem, resetOrder } = useOrder()
+  const { addItem, updateQuantity, removeItem, resetOrder, startOrder } = useOrder()
 
   const [order, setOrder] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -27,6 +30,11 @@ function OrderDetailContent() {
     const socket = connectPOSSocket()
 
     socket.on('order:updated', (updatedOrder) => {
+      if (updatedOrder._id === id) {
+        setOrder(updatedOrder)
+      }
+    })
+    socket.on('order:paid', (updatedOrder) => {
       if (updatedOrder._id === id) {
         setOrder(updatedOrder)
       }
@@ -58,6 +66,23 @@ function OrderDetailContent() {
     setShowPayment(false)
     resetOrder()
     router.push('/cashier/orders') // back to running orders
+  }
+
+  // ✅ NEW: "Add Items" open karne se pehle cart context ko existing order ke details se prime karo
+  const handleOpenAddItems = () => {
+    startOrder({
+      orderType: order.orderType,
+      tableNumber: order.orderType === 'dine-in' ? order.tableNumber : undefined,
+      room: order.orderType === 'room-service' ? (order.room?._id || order.room) : undefined,
+    })
+    setShowAddItems(true)
+  }
+
+  // ✅ NEW: modal ke andar "Finish" dabane par — modal band karo, order refresh karo, cart clear karo
+  const handleCloseAddItems = () => {
+    setShowAddItems(false)
+    resetOrder()
+    fetchOrder()
   }
 
  const handlePrintBill = () => {
@@ -283,6 +308,11 @@ function OrderDetailContent() {
     )
   }
 
+  // ✅ NEW: payment/hold status
+  const isPaid = order.payment?.status === 'PAID'
+  const isCancelled = order.status === 'cancelled'
+  const canModify = !isPaid && !isCancelled
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 lg:p-8">
       <div className="max-w-6xl mx-auto">
@@ -307,6 +337,12 @@ function OrderDetailContent() {
                   </span>
                   <span className="hidden sm:inline">•</span>
                   <span className="text-xs sm:text-sm">{format(new Date(order.createdAt), 'dd MMM, HH:mm')}</span>
+                  {/* ✅ NEW: Payment/Hold badge */}
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    isPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    {isPaid ? '✓ PAID' : '⏸ UNPAID (HOLD)'}
+                  </span>
                 </p>
               </div>
             </div>
@@ -320,7 +356,49 @@ function OrderDetailContent() {
                 <span className="text-sm sm:text-base">Print</span>
               </button>
 
-            
+              <button
+  onClick={handlePrintBill}
+  className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex-1 sm:flex-initial"
+>
+  <Printer className="h-4 w-4 sm:h-5 sm:w-5" />
+  <span className="text-sm sm:text-base">Print</span>
+</button>
+
+{/* ✅ NEW — payment hote hi turant dikhega, socket se auto-update hota hai */}
+{isPaid && (
+  <div className="flex-1 sm:flex-initial sm:w-40">
+    <KotPrintButton orderId={order._id} orderNumber={order.orderNumber} />
+  </div>
+)}
+
+              {/* ✅ NEW: Add Items button — sirf unpaid/active orders ke liye */}
+              {canModify && (
+                <button
+                  onClick={handleOpenAddItems}
+                  className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex-1 sm:flex-initial"
+                >
+                  <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5" />
+                  <span className="text-sm sm:text-base">Add Items</span>
+                </button>
+              )}
+
+              {/* ✅ NEW: Checkout / Payment button — sirf unpaid orders ke liye */}
+              {canModify && (
+                <button
+                  onClick={() => setShowPayment(true)}
+                  className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-[rgb(0,173,181)] hover:bg-[rgb(0,173,181)]/90 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex-1 sm:flex-initial"
+                >
+                  <CreditCard className="h-4 w-4 sm:h-5 sm:w-5" />
+                  <span className="text-sm sm:text-base">Checkout</span>
+                </button>
+              )}
+
+              {isPaid && (
+                <div className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg font-semibold flex-1 sm:flex-initial">
+                  <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5" />
+                  <span className="text-sm sm:text-base">Paid</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -368,13 +446,15 @@ function OrderDetailContent() {
               <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">
                 Order Items
               </h3>
-              {/* <button
-                onClick={() => setShowAddItems(true)}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[rgb(0,173,181)] text-white rounded-lg hover:bg-[rgb(0,173,181)]/90 text-sm font-semibold shadow-md hover:shadow-lg transition-all w-full sm:w-auto"
-              >
-                <ShoppingCart className="h-4 w-4" />
-                Add More Items
-              </button> */}
+              {canModify && (
+                <button
+                  onClick={handleOpenAddItems}
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[rgb(0,173,181)] text-white rounded-lg hover:bg-[rgb(0,173,181)]/90 text-sm font-semibold shadow-md hover:shadow-lg transition-all w-full sm:w-auto"
+                >
+                  <ShoppingCart className="h-4 w-4" />
+                  Add More Items
+                </button>
+              )}
             </div>
           </div>
 
@@ -464,24 +544,31 @@ function OrderDetailContent() {
           </div>
         </div>
 
-        {/* Add Items Modal (simple overlay) */}
+        {/* ✅ FIXED: Add Items Modal — ab properly CartSection (existingOrderId mode) use karta hai */}
         {showAddItems && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-gray-800 rounded-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+            <div className="bg-white dark:bg-gray-800 rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
               <div className="p-5 sm:p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gradient-to-r from-[rgb(0,173,181)] to-[rgb(0,153,161)]">
-                <h3 className="text-lg sm:text-xl font-bold text-white">Add More Items</h3>
-                <button 
-                  onClick={() => setShowAddItems(false)} 
+                <h3 className="text-lg sm:text-xl font-bold text-white">Add More Items — Order #{order.orderNumber}</h3>
+                <button
+                  onClick={handleCloseAddItems}
                   className="p-2 hover:bg-white/20 rounded-full transition-colors"
                 >
                   <X className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto">
-                <MenuSection onItemAdded={() => {
-                  setShowAddItems(false)
-                  fetchOrder() // refresh order
-                }} />
+              <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+                <div className="flex-1 overflow-y-auto">
+                  <MenuSection />
+                </div>
+                <div className="w-full md:w-96 border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-700 overflow-y-auto max-h-[50vh] md:max-h-none">
+                  <CartSection
+                    existingOrderId={order._id}
+                    existingOrderMeta={order}
+                    onFinishAddingItems={handleCloseAddItems}
+                    onItemsAdded={() => fetchOrder()}
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -497,23 +584,6 @@ function OrderDetailContent() {
         )}
       </div>
     </div>
-  )
-}
-
-// Status Badge Helper (reused from running orders)
-function getStatusBadge(status) {
-  const styles = {
-    pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
-    preparing: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
-    ready: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-    served: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
-    paid: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
-  }
-
-  return (
-    <span className={`inline-flex px-4 py-1.5 rounded-full text-sm font-medium capitalize ${styles[status] || 'bg-gray-100 text-gray-800'}`}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
-    </span>
   )
 }
 

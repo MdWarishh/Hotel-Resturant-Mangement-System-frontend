@@ -5,9 +5,11 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft, User, Users, Phone, Mail, DoorOpen, Calendar, CreditCard,
   Download, LogOut, Loader2, X, Clock, UserCheck, Globe, Image as ImageIcon,
-  Tag, CheckCircle2, Banknote, Smartphone, AlertCircle, Receipt
+  Tag, CheckCircle2, Banknote, Smartphone, AlertCircle, Receipt,
+  Pencil
 } from 'lucide-react';
 import { apiRequest } from '@/services/api';
+import { useAuth } from '@/context/AuthContext';
 
 // ── Payment method config ──
 const PAYMENT_METHOD_CONFIG = {
@@ -19,7 +21,7 @@ const PAYMENT_METHOD_CONFIG = {
 export default function BookingDetailsPage() {
   const { id } = useParams();
   const router = useRouter();
-
+   const { user } = useAuth();
   const [booking, setBooking] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showPayment, setShowPayment] = useState(false);
@@ -48,7 +50,13 @@ export default function BookingDetailsPage() {
     : 0;
 
   const due = (booking?.pricing?.total || 0) - (booking?.advancePayment || 0);
-
+   const adminRoles = ['super_admin', 'hotel_admin'];
+  const isAdmin = adminRoles.includes(user?.role);
+  const nonEditableStatuses = ['cancelled', 'no_show'];
+  const canEditBooking =
+    booking &&
+    isAdmin &&                
+    !nonEditableStatuses.includes(booking.status);
   const customChargesTotal = (booking?.pricing?.customCharges || [])
     .reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
 
@@ -408,13 +416,25 @@ export default function BookingDetailsPage() {
           )}
         </div>
 
-        <div className="flex gap-4">
+               <div className="flex gap-4">
           <button
             onClick={() => router.back()}
             className="text-black flex items-center gap-2 px-6 py-3 bg-gray-400 hover:bg-gray-500 rounded-2xl font-medium"
           >
             <ArrowLeft className="h-5 w-5" /> Back
           </button>
+
+          {/* 👇 NEW Edit button */}
+          {canEditBooking && (
+            <button
+              onClick={() => router.push(`/hotel-admin/bookings/${booking._id}/edit`)}
+                         className="flex items-center gap-3 bg-teal-600 text-white font-semibold px-8 py-3 rounded-2xl hover:bg-teal-700 shadow-lg"
+
+            >
+              <Pencil className="h-5 w-5" /> Edit Booking
+            </button>
+          )}
+
           <button
             onClick={handleDownloadPDF}
             className="flex items-center gap-3 bg-teal-600 text-white font-semibold px-8 py-3 rounded-2xl hover:bg-teal-700 shadow-lg"

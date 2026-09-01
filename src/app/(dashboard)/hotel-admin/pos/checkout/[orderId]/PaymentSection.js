@@ -27,8 +27,8 @@ export default function PaymentSection({
   };
 
   return (
-    <div className="border rounded p-4 mb-6">
-      <h3 className="font-medium mb-3">
+    <div className="border rounded p-4 mb-6 bg-white">
+      <h3 className="font-medium mb-3 text-black">
         Payment Method
       </h3>
 
@@ -38,10 +38,10 @@ export default function PaymentSection({
             key={mode.key}
             onClick={() => handleSelect(mode.key)}
             disabled={readOnly}
-            className={`px-4 py-2 border rounded ${
+            className={`px-4 py-2 border rounded font-medium ${
               value === mode.key
                 ? 'bg-black text-white'
-                : 'bg-white'
+                : 'bg-white text-black'
             } ${
               readOnly
                 ? 'opacity-60 cursor-not-allowed'
@@ -54,7 +54,7 @@ export default function PaymentSection({
       </div>
 
       {!value && (
-        <p className="text-sm text-gray-500 mt-2">
+        <p className="text-sm text-gray-600 mt-2">
           Select a payment method to proceed
         </p>
       )}

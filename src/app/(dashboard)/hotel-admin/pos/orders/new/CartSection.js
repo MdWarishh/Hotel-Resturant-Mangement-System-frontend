@@ -9,7 +9,8 @@ import { useAuth } from '@/context/AuthContext';
 import PaymentModal from '@/components/cashier/PaymentModal';
 import KotPrintButton from '@/app/(dashboard)/cashier/KotPrintButton/page';
 
-export default function CartSection({ onOrderSuccess, requirePayment = true, existingOrderId = null, existingOrderMeta = null }) {
+export default function CartSection({ onOrderSuccess, requirePayment = true, existingOrderId = null, existingOrderMeta = null,  onFinishAddingItems = null,   
+  onItemsAdded = null,    }) {
   const { order, addItem, removeItem, updateQuantity, applyDiscount, resetOrder, startOrder } = useOrder();
   const [showPayment, setShowPayment] = useState(false);
   const [discountCode, setDiscountCode] = useState('');
@@ -57,15 +58,13 @@ const finalizeOrderSuccess = (orderData, wasHeld = false) => {
   }
 };
 
-  // ✅ NEW: Items add hone ke baad — order LIST pe nahi bhejenge, isi screen pe rakhenge
-  // taaki cashier 3-4 baar (jitni baar chahe) items add kar sake, tab tak jab tak khud "Finish" na daba de
+  // ✅ UPDATED: Items add hone ke baad — order LIST pe nahi bhejenge, isi screen pe rakhenge
   const handleAddItemsSuccess = (updatedOrder) => {
     setAddRoundsCount((c) => c + 1);
     setAddSuccessMsg(
       `Items added! Current order total: ₹${updatedOrder?.pricing?.total?.toFixed(2) ?? '—'}`
     );
 
-    // Sirf cart (items list) clear karo — order type/table/room same rakho, taaki naye items daal sako
     startOrder({
       orderType: existingOrderMeta?.orderType,
       tableNumber: existingOrderMeta?.orderType === 'dine-in' ? existingOrderMeta?.tableNumber : undefined,
@@ -74,14 +73,26 @@ const finalizeOrderSuccess = (orderData, wasHeld = false) => {
         : undefined,
     });
 
+    // ✅ NEW — agar parent (jaise cashier order-detail page) ne callback diya hai to usko bhi order data do
+    if (typeof onItemsAdded === 'function') {
+      onItemsAdded(updatedOrder);
+    }
+
     setTimeout(() => setAddSuccessMsg(null), 4000);
   };
 
-  // ✅ NEW: cashier khud decide kare kab finish karna hai — tabhi orders list pe wapas jayega
+  // ✅ UPDATED: cashier khud decide kare kab finish karna hai
   const handleFinishAddingItems = () => {
     resetOrder();
+
+    // ✅ NEW — agar parent ne custom finish-behavior diya hai (jaise modal band karna), wahi use karo
+    if (typeof onFinishAddingItems === 'function') {
+      onFinishAddingItems();
+      return;
+    }
+
     if (user?.role === 'cashier') {
-      router.push('/cashier/pos/orders'); // ⚠️ apna actual cashier orders-list path check kar lena
+      router.push('/cashier/pos/orders');
     } else {
       router.push('/hotel-admin/pos/orders');
     }

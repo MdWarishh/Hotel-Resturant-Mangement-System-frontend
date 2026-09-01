@@ -6,19 +6,22 @@ import { OrderProvider, useOrder } from '@/context/OrderContext';
 import MenuSection from './MenuSection';
 import CartSection from './CartSection';
 import SubmitOrder from './SubmitOrder';
-import PaymentModal from '@/components/cashier/PaymentModal'; // assume ye hai
+import PaymentModal from '@/components/cashier/PaymentModal';
 import { apiRequest } from '@/services/api';
 import { connectPOSSocket, disconnectPOSSocket } from '@/services/posSocket';
-import { UtensilsCrossed, Users, DoorOpen, AlertCircle, Loader2, Printer, ShoppingCart } from 'lucide-react';
+import { UtensilsCrossed, Users, DoorOpen, AlertCircle, Loader2, Printer, ShoppingCart, Lock } from 'lucide-react';
 
 function NewOrderContent({ onOrderSuccess, requirePayment = true }) {
   const { order, startOrder, resetOrder } = useOrder();
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // ✅ NEW: agar orders list se "Add Items" pe click karke aaye ho
-  const addToOrderId = searchParams.get('addToOrder');
-  const [existingOrderLoading, setExistingOrderLoading] = useState(!!addToOrderId);
+  // Query param se aaya hua "Add Items" mode (orders list se)
+  const queryAddToOrderId = searchParams.get('addToOrder');
+
+  // ✅ NEW: existing-order mode ab dono jagah se trigger ho sakta hai — query param se, ya occupied table click se
+  const [addToOrderId, setAddToOrderId] = useState(queryAddToOrderId);
+  const [existingOrderLoading, setExistingOrderLoading] = useState(!!queryAddToOrderId);
   const [existingOrderMeta, setExistingOrderMeta] = useState(null);
 
   const [orderType, setOrderType] = useState(null);
@@ -29,76 +32,74 @@ function NewOrderContent({ onOrderSuccess, requirePayment = true }) {
   const [showPayment, setShowPayment] = useState(false);
   const [createdOrder, setCreatedOrder] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [availableTables, setAvailableTables] = useState([]);
-const [loadingTables, setLoadingTables] = useState(false);
-const [availableRooms, setAvailableRooms] = useState([]);
+  const [availableTables, setAvailableTables] = useState([]); // ab isme SAB tables (available + occupied) rahenge
+  const [loadingTables, setLoadingTables] = useState(false);
+  const [availableRooms, setAvailableRooms] = useState([]);
   const [loadingRooms, setLoadingRooms] = useState(false);
+
+  // ✅ NEW: occupied table ki active unpaid order dhoondhne ke liye loading state
+  const [checkingTableOrder, setCheckingTableOrder] = useState(false);
 
 
   // Socket connect
   useEffect(() => {
     connectPOSSocket();
-
     return () => disconnectPOSSocket();
   }, []);
 
-  // ✅ NEW: existing order fetch karke seedha cart screen pe le jao (order-type step skip)
+  // Existing order fetch karke seedha cart screen pe le jao (order-type step skip)
+  const loadExistingOrder = async (orderId) => {
+    setExistingOrderLoading(true);
+    try {
+      const res = await apiRequest(`/pos/orders/${orderId}`);
+      const existing = res.data.order;
+      setExistingOrderMeta(existing);
+
+      startOrder({
+        orderType: existing.orderType,
+        tableNumber: existing.orderType === 'dine-in' ? existing.tableNumber : undefined,
+        room: existing.orderType === 'room-service' ? (existing.room?._id || existing.room) : undefined,
+      });
+    } catch (err) {
+      setErrors({ general: 'Failed to load order for adding items' });
+    } finally {
+      setExistingOrderLoading(false);
+    }
+  };
+
   useEffect(() => {
-    if (!addToOrderId) return;
+    if (!queryAddToOrderId) return;
+    loadExistingOrder(queryAddToOrderId);
+  }, [queryAddToOrderId]);
 
-    const loadExistingOrder = async () => {
-      setExistingOrderLoading(true);
-      try {
-        const res = await apiRequest(`/pos/orders/${addToOrderId}`);
-        const existing = res.data.order;
-        setExistingOrderMeta(existing);
 
-        startOrder({
-          orderType: existing.orderType,
-          tableNumber: existing.orderType === 'dine-in' ? existing.tableNumber : undefined,
-          room: existing.orderType === 'room-service' ? (existing.room?._id || existing.room) : undefined,
-        });
-      } catch (err) {
-        setErrors({ general: 'Failed to load order for adding items' });
-      } finally {
-        setExistingOrderLoading(false);
-      }
-    };
+  // ✅ FIXED: Fetch ALL tables (available + occupied) jab Dine-In select ho
+  useEffect(() => {
+    if (orderType === 'dine-in') {
+      const fetchAllTables = async () => {
+        setLoadingTables(true);
+        try {
+          const res = await apiRequest('/tables');
+          const tables = res.data?.tables || res.data || [];
+          // ✅ Ab available + occupied dono rakho, sirf 'reserved'/'inactive' jaisi states filter karo agar hain
+          setAvailableTables(tables.filter(t => ['available', 'occupied'].includes(t.status)));
+        } catch (err) {
+          setErrors(prev => ({ ...prev, general: 'Failed to load tables' }));
+        } finally {
+          setLoadingTables(false);
+        }
+      };
+      fetchAllTables();
+    }
+  }, [orderType]);
 
-    loadExistingOrder();
-  }, [addToOrderId]);
-  
-
-  // Fetch tables when Dine-In is selected
-useEffect(() => {
-  if (orderType === 'dine-in') {
-    const fetchAvailableTables = async () => {
-      setLoadingTables(true);
-      try {
-        const res = await apiRequest('/tables');
-        // Filter to show only 'available' tables
-        const tables = res.data?.tables || res.data || [];
-        setAvailableTables(tables.filter(t => t.status === 'available'));
-      } catch (err) {
-        setErrors(prev => ({ ...prev, general: 'Failed to load tables' }));
-      } finally {
-        setLoadingTables(false);
-      }
-    };
-    fetchAvailableTables();
-  }
-}, [orderType]);
-
-useEffect(() => {
+  useEffect(() => {
     if (orderType === 'room-service') {
       const fetchAvailableRooms = async () => {
         setLoadingRooms(true);
         try {
-          // Assuming your endpoint is /rooms. Update if it's different.
-          const res = await apiRequest('/rooms'); 
+          const res = await apiRequest('/rooms');
           const rooms = res.data?.rooms || res.data || [];
-          // Filtering for 'occupied' rooms is usually best for Room Service
-          // since you can only deliver to someone currently in a room.
           setAvailableRooms(rooms.filter(r => r.status === 'occupied'));
         } catch (err) {
           setErrors(prev => ({ ...prev, general: 'Failed to load rooms' }));
@@ -110,14 +111,44 @@ useEffect(() => {
     }
   }, [orderType]);
 
+  // ✅ NEW: Occupied table pe click hua — uski active/unpaid order dhoondho aur seedha "Add Items" mode mein le jao
+  const handleOccupiedTableClick = async (table) => {
+    setErrors({});
+    setCheckingTableOrder(true);
+    try {
+      // Table ke exact number se unpaid/active orders dhoondho
+      const res = await apiRequest(`/pos/orders?search=${encodeURIComponent(table.tableNumber)}&status=pending,preparing,ready,served`);
+      const ordersData = Array.isArray(res?.data?.orders) ? res.data.orders : res.data || [];
+
+      const activeOrder = ordersData.find(
+        (o) =>
+          o.tableNumber === table.tableNumber &&
+          o.payment?.status !== 'PAID' &&
+          o.status !== 'cancelled'
+      );
+
+      if (!activeOrder) {
+        setErrors({
+          general: `Table ${table.tableNumber} is occupied but no active running order found. Please free the table first or contact admin.`,
+        });
+        return;
+      }
+
+      // ✅ Seedha existing-order (Add Items) mode mein switch — jaisa orders-list se "Add Items" click karne pe hota hai
+      setAddToOrderId(activeOrder._id);
+      await loadExistingOrder(activeOrder._id);
+    } catch (err) {
+      setErrors({ general: 'Failed to check table order. Please try again.' });
+    } finally {
+      setCheckingTableOrder(false);
+    }
+  };
+
   const validateStart = () => {
     const newErrors = {};
     if (!orderType) newErrors.orderType = 'Order type is required';
-
     if (orderType === 'dine-in' && !tableNumber.trim()) newErrors.tableNumber = 'Table number required';
-
     if (orderType === 'room-service' && !roomNumber.trim()) newErrors.roomNumber = 'Room number required';
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -125,10 +156,10 @@ useEffect(() => {
   const handleStartOrder = async () => {
     if (!validateStart()) return;
 
-    // Dine-in hai to table ko occupied mark karo
+    // Dine-in hai to table ko occupied mark karo (sirf tab jab pehle se available thi)
     if (orderType === 'dine-in') {
       const selectedTable = availableTables.find(t => t.tableNumber === tableNumber);
-      if (selectedTable) {
+      if (selectedTable && selectedTable.status === 'available') {
         try {
           await apiRequest(`/tables/${selectedTable._id}/status`, {
             method: 'PATCH',
@@ -173,11 +204,9 @@ useEffect(() => {
       const newOrder = res.data.order;
       setCreatedOrder(newOrder);
 
-      // If payment required, open modal
       if (requirePayment) {
         setShowPayment(true);
       } else {
-        // Direct success
         handlePaymentSuccess(newOrder);
       }
     } catch (err) {
@@ -188,12 +217,9 @@ useEffect(() => {
   };
 
   const handlePaymentSuccess = (orderData) => {
-    // Table backend pe /pos/orders/:id/payment call hote hi automatically free ho jaata hai
     resetOrder();
     setShowPayment(false);
     if (onOrderSuccess) onOrderSuccess(orderData);
-
-    // Print invoice
     window.open(`/api/pos/orders/${orderData._id}/invoice/pdf`, '_blank');
     alert('Order placed successfully! Invoice opening...');
   };
@@ -202,8 +228,8 @@ useEffect(() => {
     setShowPayment(false);
   };
 
-  // ✅ NEW: existing order fetch ho raha ho to loader dikhao (order-type screen na dikhe)
-  if (!order && existingOrderLoading) {
+  // Existing order fetch ho raha ho to loader dikhao (order-type screen na dikhe)
+  if (!order && (existingOrderLoading || checkingTableOrder)) {
     return (
       <div className="flex h-full flex-col items-center justify-center bg-white dark:bg-gray-800 p-8">
         <Loader2 className="h-10 w-10 animate-spin text-[rgb(0,173,181)] mb-4" />
@@ -256,67 +282,86 @@ useEffect(() => {
         {orderType && (
           <div className="mt-8 w-full max-w-md">
             {orderType === 'dine-in' && (
-  <div className="mb-4">
-    <label className="block text-sm font-medium mb-2">Select Available Table *</label>
-    {loadingTables ? (
-      <div className="flex items-center gap-2 text-gray-500"><Loader2 className="animate-spin h-4 w-4" /> Loading tables...</div>
-    ) : (
-      <div className="grid grid-cols-3 gap-3">
-        {availableTables.map((table) => (
-          <button
-            key={table._id}
-            onClick={() => setTableNumber(table.tableNumber)}
-            className={`p-3 border rounded-lg text-center transition-all ${
-              tableNumber === table.tableNumber 
-                ? 'border-[rgb(0,173,181)] bg-[rgb(0,173,181)]/10 text-[rgb(0,173,181)]' 
-                : 'border-gray-200 hover:border-gray-400'
-            }`}
-          >
-            <span className="font-bold">{table.tableNumber}</span>
-            <div className="text-xs text-gray-500">Cap: {table.capacity}</div>
-          </button>
-        ))}
-      </div>
-    )}
-    {errors.tableNumber && <p className="text-red-600 text-sm mt-1">{errors.tableNumber}</p>}
-  </div>
-)}
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Select Table *</label>
+                {loadingTables ? (
+                  <div className="flex items-center gap-2 text-gray-500"><Loader2 className="animate-spin h-4 w-4" /> Loading tables...</div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-3 gap-3">
+                      {availableTables.map((table) => {
+                        const isOccupied = table.status === 'occupied';
+                        return (
+                          <button
+                            key={table._id}
+                            onClick={() =>
+                              isOccupied
+                                ? handleOccupiedTableClick(table)
+                                : setTableNumber(table.tableNumber)
+                            }
+                            className={`relative p-3 border rounded-lg text-center transition-all ${
+                              isOccupied
+                                ? 'border-amber-400 bg-amber-50 text-amber-800 hover:border-amber-500'
+                                : tableNumber === table.tableNumber
+                                ? 'border-[rgb(0,173,181)] bg-[rgb(0,173,181)]/10 text-[rgb(0,173,181)]'
+                                : 'border-gray-200 hover:border-gray-400'
+                            }`}
+                          >
+                            {isOccupied && (
+                              <Lock className="h-3 w-3 absolute top-1.5 right-1.5 text-amber-500" />
+                            )}
+                            <span className="font-bold">{table.tableNumber}</span>
+                            <div className="text-[10px] mt-0.5">
+                              {isOccupied ? 'Occupied — Add Items' : `Cap: ${table.capacity}`}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      🔒 Amber tables are occupied with a running order — click to add more items to that order.
+                    </p>
+                  </>
+                )}
+                {errors.tableNumber && <p className="text-red-600 text-sm mt-1">{errors.tableNumber}</p>}
+              </div>
+            )}
 
-          {orderType === 'room-service' && (
-    <div className="mb-4">
-      <label className="block text-sm font-medium mb-2">Select Occupied Room *</label>
-      {loadingRooms ? (
-        <div className="flex items-center gap-2 text-gray-500">
-          <Loader2 className="animate-spin h-4 w-4" /> Loading rooms...
-        </div>
-      ) : availableRooms.length === 0 ? (
-        <div className="p-4 border border-yellow-200 bg-yellow-50 text-yellow-700 rounded-lg flex items-center gap-2">
-          <AlertCircle className="h-4 w-4" /> No occupied rooms found for service.
-        </div>
-      ) : (
-        <div className="grid grid-cols-3 gap-3 max-h-60 overflow-y-auto p-1">
-          {availableRooms.map((room) => (
-          <button
-  key={room._id}
-  onClick={() => {
-    setRoomNumber(room.roomNumber); // Sets "231" for the UI
-    setSelectedRoomId(room._id);    // Sets the MongoDB ID for the Backend
-  }}
-  className={`p-3 border rounded-lg text-center transition-all ${
-    roomNumber === room.roomNumber 
-      ? 'border-[rgb(0,173,181)] bg-[rgb(0,173,181)]/10 text-[rgb(0,173,181)]' 
-      : 'border-gray-200 hover:border-gray-400'
-  }`}
->
-  <span className="font-bold text-lg">{room.roomNumber}</span>
-  <div className="text-[10px] uppercase text-gray-500">{room.type || 'Room'}</div>
-</button>
-          ))}
-        </div>
-      )}
-      {errors.roomNumber && <p className="text-red-600 text-sm mt-1">{errors.roomNumber}</p>}
-    </div>
-  )}
+            {orderType === 'room-service' && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Select Occupied Room *</label>
+                {loadingRooms ? (
+                  <div className="flex items-center gap-2 text-gray-500">
+                    <Loader2 className="animate-spin h-4 w-4" /> Loading rooms...
+                  </div>
+                ) : availableRooms.length === 0 ? (
+                  <div className="p-4 border border-yellow-200 bg-yellow-50 text-yellow-700 rounded-lg flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4" /> No occupied rooms found for service.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-3 max-h-60 overflow-y-auto p-1">
+                    {availableRooms.map((room) => (
+                      <button
+                        key={room._id}
+                        onClick={() => {
+                          setRoomNumber(room.roomNumber);
+                          setSelectedRoomId(room._id);
+                        }}
+                        className={`p-3 border rounded-lg text-center transition-all ${
+                          roomNumber === room.roomNumber
+                            ? 'border-[rgb(0,173,181)] bg-[rgb(0,173,181)]/10 text-[rgb(0,173,181)]'
+                            : 'border-gray-200 hover:border-gray-400'
+                        }`}
+                      >
+                        <span className="font-bold text-lg">{room.roomNumber}</span>
+                        <div className="text-[10px] uppercase text-gray-500">{room.type || 'Room'}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {errors.roomNumber && <p className="text-red-600 text-sm mt-1">{errors.roomNumber}</p>}
+              </div>
+            )}
 
             <button
               onClick={handleStartOrder}
@@ -351,7 +396,7 @@ useEffect(() => {
           }}
           requirePayment={requirePayment}
           existingOrderId={addToOrderId}
-          existingOrderNumber={existingOrderMeta?.orderNumber}
+          existingOrderMeta={existingOrderMeta}
         />
       </div>
 

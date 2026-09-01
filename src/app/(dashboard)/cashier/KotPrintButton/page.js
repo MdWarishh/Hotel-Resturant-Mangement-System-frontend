@@ -20,7 +20,6 @@ export default function KotPrintButton({ orderId, orderNumber }) {
       const res = await apiRequest(`/pos/orders/${orderId}/kot`)
       const kot = res.data
 
-      // Hidden print iframe banao — page reload nahi hoga
       const printWindow = window.open('', '_blank', 'width=400,height=600')
       if (!printWindow) {
         alert('Popup blocked! Browser mein popup allow karo.')
@@ -30,11 +29,9 @@ export default function KotPrintButton({ orderId, orderNumber }) {
       printWindow.document.write(generateKOTHtml(kot))
       printWindow.document.close()
 
-      // Page load hone ke baad print dialog kholo
       printWindow.onload = () => {
         printWindow.focus()
         printWindow.print()
-        // Print dialog close hone ke baad window band karo
         printWindow.onafterprint = () => printWindow.close()
       }
     } catch (err) {
@@ -63,6 +60,7 @@ export default function KotPrintButton({ orderId, orderNumber }) {
 
 // ============================================
 // KOT HTML Generator — 80mm thermal optimized
+// ✅ Hotel branding + pricing (Swiggy-style)
 // ============================================
 function generateKOTHtml(kot) {
   const formatTime = (dateStr) => {
@@ -73,6 +71,8 @@ function generateKOTHtml(kot) {
     })
   }
 
+  const fmtAmt = (n) => `Rs.${Number(n || 0).toLocaleString('en-IN')}`
+
   const locationLine = () => {
     if (kot.orderType === 'dine-in' && kot.tableNumber) return `Table: ${kot.tableNumber}`
     if (kot.orderType === 'room-service' && kot.roomNumber) return `Room: ${kot.roomNumber}`
@@ -81,17 +81,34 @@ function generateKOTHtml(kot) {
 
   const itemsHtml = kot.items.map(item => `
     <tr>
-      <td style="padding: 4px 2px; font-size: 14px; font-weight: bold; vertical-align: top;">
+      <td style="padding: 4px 2px; font-size: 13px; font-weight: bold; vertical-align: top; white-space:nowrap;">
         ${item.quantity}x
       </td>
-      <td style="padding: 4px 2px; font-size: 14px; vertical-align: top; width: 100%;">
+      <td style="padding: 4px 2px; font-size: 13px; vertical-align: top; width: 100%;">
         ${item.name}
         ${item.variant ? `<div style="font-size: 11px; color: #555;">(${item.variant})</div>` : ''}
         ${item.specialInstructions ? `<div style="font-size: 11px; font-style: italic; color: #333;">⚠ ${item.specialInstructions}</div>` : ''}
       </td>
+      <td style="padding: 4px 2px; font-size: 13px; text-align:right; vertical-align: top; white-space:nowrap;">
+        ${fmtAmt(item.subtotal ?? item.price * item.quantity)}
+      </td>
     </tr>
-    <tr><td colspan="2"><div style="border-bottom: 1px dashed #ccc; margin: 2px 0;"></div></td></tr>
+    <tr><td colspan="3"><div style="border-bottom: 1px dashed #ccc; margin: 2px 0;"></div></td></tr>
   `).join('')
+
+  const p = kot.pricing || {}
+  const extraChargesRows = (p.extraCharges || [])
+    .filter(c => c.label && Number(c.amount) > 0)
+    .map(c => `
+      <div style="display:flex; justify-content:space-between; font-size:12px; margin: 2px 0;">
+        <span>${c.label}</span>
+        <span>+${fmtAmt(c.amount)}</span>
+      </div>
+    `).join('')
+
+  const paymentLine = kot.paymentStatus === 'PAID'
+    ? `<div style="text-align:center; font-size:13px; font-weight:900; border:2px solid #000; padding:4px; margin-top:6px;">PAID${kot.paymentMode ? ' — ' + kot.paymentMode : ''}</div>`
+    : `<div style="text-align:center; font-size:13px; font-weight:900; border:2px dashed #000; padding:4px; margin-top:6px;">UNPAID</div>`
 
   return `
     <!DOCTYPE html>
@@ -100,7 +117,6 @@ function generateKOTHtml(kot) {
       <meta charset="UTF-8" />
       <title>KOT - ${kot.kotNumber}</title>
       <style>
-        /* 80mm thermal printer optimized */
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         @page {
@@ -121,28 +137,50 @@ function generateKOTHtml(kot) {
         .divider { border-top: 2px dashed #000; margin: 6px 0; }
         .divider-solid { border-top: 2px solid #000; margin: 6px 0; }
 
-        .header-title {
-          font-size: 20px;
+        .hotel-name {
+          font-size: 19px;
           font-weight: 900;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+        }
+
+        .hotel-meta {
+          font-size: 10px;
+          color: #333;
+          margin-top: 2px;
+        }
+
+        .kot-tag {
+          font-size: 11px;
           letter-spacing: 2px;
+          font-weight: bold;
+          margin-top: 4px;
         }
 
         .kot-number {
-          font-size: 28px;
+          font-size: 22px;
           font-weight: 900;
           letter-spacing: 1px;
+          margin-top: 4px;
         }
 
         .location-badge {
-          font-size: 16px;
+          font-size: 14px;
           font-weight: bold;
           border: 2px solid #000;
-          padding: 3px 8px;
+          padding: 2px 8px;
           display: inline-block;
           margin: 4px 0;
         }
 
         table { width: 100%; border-collapse: collapse; }
+
+        .totals-row {
+          display:flex; justify-content:space-between; font-size:12px; padding: 2px 0;
+        }
+        .grand-row {
+          display:flex; justify-content:space-between; font-size:15px; font-weight:900; padding: 4px 0;
+        }
 
         .footer {
           font-size: 10px;
@@ -158,10 +196,12 @@ function generateKOTHtml(kot) {
     </head>
     <body>
 
-      <!-- KOT Header -->
+      <!-- ✅ Hotel Header -->
       <div class="center">
-        <div class="header-title">KOT</div>
-        <div class="header-title" style="font-size:13px; letter-spacing:1px;">KITCHEN ORDER TICKET</div>
+        <div class="hotel-name">${kot.hotelName || 'HOTEL'}</div>
+        ${kot.hotelAddress ? `<div class="hotel-meta">${kot.hotelAddress}</div>` : ''}
+        ${kot.hotelPhone ? `<div class="hotel-meta">Ph: ${kot.hotelPhone}</div>` : ''}
+        <div class="kot-tag">KITCHEN ORDER TICKET (KOT)</div>
       </div>
 
       <div class="divider-solid"></div>
@@ -185,13 +225,25 @@ function generateKOTHtml(kot) {
 
       <div class="divider-solid"></div>
 
-      <!-- Items -->
-      <div style="font-size: 12px; font-weight: bold; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px;">
-        Items
+      <!-- Items with pricing -->
+      <div style="display:flex; justify-content:space-between; font-size: 11px; font-weight: bold; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px;">
+        <span>Qty / Item</span>
+        <span>Amt</span>
       </div>
       <table>
         ${itemsHtml}
       </table>
+
+      <!-- ✅ Totals -->
+      <div class="divider-solid"></div>
+      <div class="totals-row"><span>Item Total</span><span>${fmtAmt(p.subtotal)}</span></div>
+      ${extraChargesRows}
+      ${p.discount > 0 ? `<div class="totals-row"><span>Discount</span><span>-${fmtAmt(p.discount)}</span></div>` : ''}
+      <div class="totals-row"><span>Taxes (GST)</span><span>${fmtAmt(p.tax)}</span></div>
+      <div class="divider"></div>
+      <div class="grand-row"><span>Grand Total</span><span>${fmtAmt(p.total)}</span></div>
+
+      ${paymentLine}
 
       <!-- Special Instructions -->
       ${kot.specialInstructions ? `
@@ -210,7 +262,6 @@ function generateKOTHtml(kot) {
         <div style="margin-top: 4px; font-size: 9px;">*** Kitchen Copy ***</div>
       </div>
 
-      <!-- Extra space for paper cut -->
       <div style="height: 20px;"></div>
 
     </body>
