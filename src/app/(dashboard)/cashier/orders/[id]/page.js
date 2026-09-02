@@ -11,6 +11,7 @@ import CartSection from '../../../hotel-admin/pos/orders/new/CartSection'
 import { Loader2, AlertCircle, Printer, ArrowLeft, DollarSign, Clock, Users, BedDouble, ShoppingCart, X, CreditCard, CheckCircle2 } from 'lucide-react'
 import { format } from 'date-fns'
 import KotPrintButton from '../../KotPrintButton/page'
+import BillPrintButton from '../../BillPrintButton/page'
 
 
 function OrderDetailContent() {
@@ -347,77 +348,108 @@ function OrderDetailContent() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2 sm:gap-3 w-full lg:w-auto">
-              <button
-                onClick={handlePrintBill}
-                className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex-1 sm:flex-initial"
-              >
-                <Printer className="h-4 w-4 sm:h-5 sm:w-5" />
-                <span className="text-sm sm:text-base">Print</span>
-              </button>
+        <div className="flex flex-wrap gap-2 sm:gap-3 w-full lg:w-auto">
+  {/* ✅ KOT — hamesha available (cancelled ke alawa), payment ka wait nahi */}
+  {!isCancelled && (
+    <div className="flex-1 sm:flex-initial sm:w-40">
+      <KotPrintButton orderId={order._id} orderNumber={order.orderNumber} />
+    </div>
+  )}
 
-              <button
-  onClick={handlePrintBill}
-  className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex-1 sm:flex-initial"
->
-  <Printer className="h-4 w-4 sm:h-5 sm:w-5" />
-  <span className="text-sm sm:text-base">Print</span>
-</button>
-
-{/* ✅ NEW — payment hote hi turant dikhega, socket se auto-update hota hai */}
+  {/* ✅ Bill — sirf payment hone ke baad, pricing + PAID stamp ke saath */}
 {isPaid && (
-  <div className="flex-1 sm:flex-initial sm:w-40">
-    <KotPrintButton orderId={order._id} orderNumber={order.orderNumber} />
+  <div className="flex-1 sm:flex-initial sm:w-32">
+    <BillPrintButton order={order} hotelName={order?.hotel?.name || 'Hotel'} />
   </div>
 )}
 
-              {/* ✅ NEW: Add Items button — sirf unpaid/active orders ke liye */}
-              {canModify && (
-                <button
-                  onClick={handleOpenAddItems}
-                  className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex-1 sm:flex-initial"
-                >
-                  <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5" />
-                  <span className="text-sm sm:text-base">Add Items</span>
-                </button>
-              )}
+  {/* ✅ Add Items — sirf unpaid/active orders ke liye */}
+  {canModify && (
+    <button
+      onClick={handleOpenAddItems}
+      className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex-1 sm:flex-initial"
+    >
+      <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5" />
+      <span className="text-sm sm:text-base">Add Items</span>
+    </button>
+  )}
 
-              {/* ✅ NEW: Checkout / Payment button — sirf unpaid orders ke liye */}
-              {canModify && (
-                <button
-                  onClick={() => setShowPayment(true)}
-                  className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-[rgb(0,173,181)] hover:bg-[rgb(0,173,181)]/90 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex-1 sm:flex-initial"
-                >
-                  <CreditCard className="h-4 w-4 sm:h-5 sm:w-5" />
-                  <span className="text-sm sm:text-base">Checkout</span>
-                </button>
-              )}
+  {/* ✅ Checkout / Payment — sirf unpaid orders ke liye */}
+  {canModify && (
+    <button
+      onClick={() => setShowPayment(true)}
+      className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-[rgb(0,173,181)] hover:bg-[rgb(0,173,181)]/90 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex-1 sm:flex-initial"
+    >
+      <CreditCard className="h-4 w-4 sm:h-5 sm:w-5" />
+      <span className="text-sm sm:text-base">Checkout</span>
+    </button>
+  )}
 
-              {isPaid && (
-                <div className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg font-semibold flex-1 sm:flex-initial">
-                  <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5" />
-                  <span className="text-sm sm:text-base">Paid</span>
-                </div>
-              )}
-            </div>
+  {isPaid && (
+    <div className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg font-semibold flex-1 sm:flex-initial">
+      <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5" />
+      <span className="text-sm sm:text-base">Paid</span>
+    </div>
+  )}
+</div>
           </div>
         </div>
 
         {/* Status & Summary */}
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md border-2 border-gray-200 dark:border-gray-700 p-5 sm:p-6 mb-6 sm:mb-8 hover:shadow-lg transition-shadow">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sm:gap-6">
-            <div>
-              <p className="text-xs sm:text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Current Status</p>
-              {getStatusBadge(order.status)}
-            </div>
+        <div className="flex flex-wrap gap-2 sm:gap-3 w-full lg:w-auto">
+  {/* KOT — hamesha available */}
+  {!isCancelled && (
+    <div className="flex-1 sm:flex-initial sm:w-40">
+      <KotPrintButton orderId={order._id} orderNumber={order.orderNumber} />
+    </div>
+  )}
 
-            <div className="text-left sm:text-right w-full sm:w-auto">
-              <p className="text-xs sm:text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Grand Total</p>
-              <p className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[rgb(0,173,181)]">
-                ₹{order.pricing?.total?.toLocaleString() || '0.00'}
-              </p>
-            </div>
-          </div>
+  {/* ✅ Thermal Bill — fast print, PAID stamp */}
+  {isPaid && (
+    <div className="flex-1 sm:flex-initial sm:w-32">
+      <BillPrintButton order={order} hotelName={order?.hotel?.name || 'Hotel'} />
+    </div>
+  )}
+
+  {/* ✅ Full Invoice — purana A4-style professional invoice */}
+  {isPaid && (
+    <button
+      onClick={handlePrintBill}
+      className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex-1 sm:flex-initial"
+    >
+      <Printer className="h-4 w-4 sm:h-5 sm:w-5" />
+      <span className="text-sm sm:text-base">Invoice</span>
+    </button>
+  )}
+
+  {canModify && (
+    <button
+      onClick={handleOpenAddItems}
+      className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex-1 sm:flex-initial"
+    >
+      <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5" />
+      <span className="text-sm sm:text-base">Add Items</span>
+    </button>
+  )}
+
+  {canModify && (
+    <button
+      onClick={() => setShowPayment(true)}
+      className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-[rgb(0,173,181)] hover:bg-[rgb(0,173,181)]/90 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all flex-1 sm:flex-initial"
+    >
+      <CreditCard className="h-4 w-4 sm:h-5 sm:w-5" />
+      <span className="text-sm sm:text-base">Checkout</span>
+    </button>
+  )}
+
+  {isPaid && (
+    <div className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg font-semibold flex-1 sm:flex-initial">
+      <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5" />
+      <span className="text-sm sm:text-base">Paid</span>
+    </div>
+  )}
+</div>
 
           <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 text-sm">
             <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 sm:p-4">

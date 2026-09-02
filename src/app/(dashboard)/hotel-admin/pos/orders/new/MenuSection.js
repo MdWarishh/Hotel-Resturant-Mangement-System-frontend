@@ -60,20 +60,26 @@ export default function MenuSection() {
     return Array.from(map.values());
   })();
 
-  // Search + subcategory filter
+   // Search + subcategory filter
   const filteredItems = (() => {
+    // 🔍 Agar search active hai to SAARI categories me se match dhoondo (global search)
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const allItems = menu.flatMap(cat => cat.items);
+      return allItems.filter(item =>
+        item.name.toLowerCase().includes(q) ||
+        item.description?.toLowerCase().includes(q)
+      );
+    }
+
+    // Search nahi hai to normal active-category + subcategory filter
     if (!activeCategory) return [];
     return activeCategory.items.filter(item => {
-      const matchesSearch =
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.description?.toLowerCase().includes(searchQuery.toLowerCase());
-
       const matchesSubCategory =
         activeSubCategoryId === 'all' ||
         (item.subCategory &&
           (item.subCategory._id || item.subCategory) === activeSubCategoryId);
-
-      return matchesSearch && matchesSubCategory;
+      return matchesSubCategory;
     });
   })();
 

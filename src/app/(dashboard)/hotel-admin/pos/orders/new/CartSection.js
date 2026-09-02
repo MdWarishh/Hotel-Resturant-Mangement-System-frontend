@@ -43,19 +43,19 @@ const finalizeOrderSuccess = (orderData, wasHeld = false) => {
   setCreatedOrder(null);
   setShowSuccess(false);
 
-  if (wasHeld) {
+   if (wasHeld) {
     if (user?.role === 'cashier') {
-      router.push('/cashier/pos/orders'); // ⚠️ apna actual cashier orders-list path check kar lena
+      router.push('/cashier/orders');   // ✅ fixed — pehle '/cashier/pos/orders' tha (galat/blocked route)
     } else {
       router.push('/hotel-admin/pos/orders');
     }
   } else {
-    if (user?.role === 'cashier') {
-      router.push('/cashier/pos');
+      if (user?.role === 'cashier') {
+      router.push('/cashier/orders');   // ✅ fixed
     } else {
-      router.push('/hotel-admin/pos/orders/new');
+      router.push('/hotel-admin/pos/orders');
     }
-  }
+  };
 };
 
   // ✅ UPDATED: Items add hone ke baad — order LIST pe nahi bhejenge, isi screen pe rakhenge
@@ -85,14 +85,13 @@ const finalizeOrderSuccess = (orderData, wasHeld = false) => {
   const handleFinishAddingItems = () => {
     resetOrder();
 
-    // ✅ NEW — agar parent ne custom finish-behavior diya hai (jaise modal band karna), wahi use karo
     if (typeof onFinishAddingItems === 'function') {
       onFinishAddingItems();
       return;
     }
 
     if (user?.role === 'cashier') {
-      router.push('/cashier/pos/orders');
+      router.push('/cashier/orders');   // ✅ fixed
     } else {
       router.push('/hotel-admin/pos/orders');
     }
@@ -477,10 +476,10 @@ const handlePaymentSuccess = (updatedOrder) => {
                 <Printer className="h-5 w-5" />
                 Print Invoice
               </button>
-              <button
+                          <button
                 onClick={() => {
                   setShowSuccess(false);
-                  router.push('/hotel-admin/pos/orders');
+                  router.push(user?.role === 'cashier' ? '/cashier/orders' : '/hotel-admin/pos/orders');
                 }}
                 className="w-full py-3 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 font-medium"
               >
