@@ -2,7 +2,16 @@
 
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+  useDeferredValue,
+  memo,
+  use,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import { getPublicMenu, getHotelByCode, formatPrice } from '@/services/allinonApi';
 import { useCart } from '@/context/CartContext';
@@ -10,8 +19,86 @@ import Image from 'next/image';
 import axios from 'axios';
 import CartDrawer from '@/components/allinone/CartDrawer';
 import TrackOrderModal from '@/components/allinone/TrackOrderModal';
-import StarRating from '@/components/allinone/StarRating';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const ALL = 'all';
+const RATING_BATCH_SIZE = 6; // ek saath itni rating requests parallel
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Static styles (render ke bahar, taaki har render pe string na bane)
+// ─────────────────────────────────────────────────────────────────────────────
+const PAGE_STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+  * { box-sizing: border-box; }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #f97316; border-radius: 99px; }
+
+  .cat-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+  .cat-scroll::-webkit-scrollbar { display: none; }
+
+  .menu-card { transition: transform 0.25s ease, box-shadow 0.25s ease; }
+  .menu-card:hover { transform: translateY(-4px); box-shadow: 0 20px 60px -12px rgba(249,115,22,0.18); }
+
+  @keyframes badge-pop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.3); }
+    100% { transform: scale(1); }
+  }
+  .badge-pop { animation: badge-pop 0.3s ease; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .fade-up { animation: fadeUp 0.4s ease forwards; }
+  .fade-up-delay-1 { animation-delay: 0.05s; opacity: 0; }
+  .fade-up-delay-2 { animation-delay: 0.1s; opacity: 0; }
+
+  .float-btn { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+  .float-btn:hover { transform: translateY(-2px) scale(1.04); }
+  .float-btn:active { transform: scale(0.97); }
+
+  .add-btn { transition: all 0.18s ease; }
+  .add-btn:hover { background: #ea6b0e; transform: scale(1.03); }
+  .add-btn:active { transform: scale(0.97); }
+
+  .search-input:focus { box-shadow: 0 0 0 3px rgba(249,115,22,0.2); }
+`;
+
+const LOADER_STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600&display=swap');
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse-glow {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.05); }
+  }
+  .loader-ring { animation: spin 1s linear infinite; }
+  .loader-text { animation: pulse-glow 1.5s ease-in-out infinite; font-family: 'DM Sans', sans-serif; }
+`;
+
+const TYPE_CONFIG = {
+  veg: { border: '#22c55e', dot: '#22c55e', label: 'Veg' },
+  'non-veg': { border: '#ef4444', dot: '#ef4444', label: 'Non-Veg' },
+  beverage: { border: '#60a5fa', dot: '#60a5fa', label: 'Beverage' },
+};
+
+const SPICY_MAP = {
+  mild: { label: '🌶 Mild', bg: '#fefce8', color: '#a16207' },
+  medium: { label: '🌶🌶 Medium', bg: '#fff7ed', color: '#c2410c' },
+  hot: { label: '🌶🌶🌶 Hot', bg: '#fef2f2', color: '#b91c1c' },
+};
+
+const RATING_LABELS = ['', '😞 Poor', '😐 Fair', '🙂 Good', '😊 Great', '🤩 Excellent!'];
+
+const STAR_PATH =
+  'M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Page
+// ─────────────────────────────────────────────────────────────────────────────
 export default function PublicMenuPage({ params }) {
   const { hotelCode } = use(params);
 
@@ -22,83 +109,150 @@ export default function PublicMenuPage({ params }) {
   const [menu, setMenu] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState(ALL); // ✅ default: All
   const [searchQuery, setSearchQuery] = useState('');
   const [trackModalOpen, setTrackModalOpen] = useState(false);
   const [itemRatings, setItemRatings] = useState({});
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+  // Typing smooth rahe, heavy filtering deferred
+  const deferredQuery = useDeferredValue(searchQuery);
 
+  // addToCart ka stable reference (memo cards unnecessarily re-render na ho)
+  const addToCartRef = useRef(addToCart);
+  addToCartRef.current = addToCart;
+  const stableAddToCart = useCallback((item) => addToCartRef.current(item), []);
+
+  // ── Fetch hotel + menu ──
   useEffect(() => {
-    if (hotelCode) fetchData();
+    if (!hotelCode) return;
+    let cancelled = false;
+
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const [hotelResponse, menuResponse] = await Promise.all([
+          getHotelByCode(hotelCode),
+          getPublicMenu(hotelCode),
+        ]);
+        if (cancelled) return;
+        setHotel(hotelResponse.data.hotel);
+        setMenu(menuResponse.data.menu || []);
+      } catch (err) {
+        if (!cancelled) setError(err.message || 'Failed to load menu');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchData();
+    return () => {
+      cancelled = true;
+    };
   }, [hotelCode]);
 
-  useEffect(() => {
-    if (menu.length > 0) fetchAllRatings();
-  }, [menu]);
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const [hotelResponse, menuResponse] = await Promise.all([
-        getHotelByCode(hotelCode),
-        getPublicMenu(hotelCode),
-      ]);
-      setHotel(hotelResponse.data.hotel);
-      setMenu(menuResponse.data.menu || []);
-      if (menuResponse.data.menu && menuResponse.data.menu.length > 0) {
-        setSelectedCategory(menuResponse.data.menu[0].category._id);
-      }
-    } catch (err) {
-      setError(err.message || 'Failed to load menu');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchAllRatings = async () => {
-    const ratings = {};
-    const allItems = menu.flatMap(cat => cat.items);
-    for (const item of allItems) {
+  // ── Ratings: parallel batches (pehle sequential tha = slow) ──
+  const fetchRating = useCallback(
+    async (itemId) => {
       try {
-        const response = await axios.get(
-          `${API_URL}/allinone/${hotelCode}/items/${item._id}/feedback`
-        );
-        ratings[item._id] = response.data.data.stats;
+        const response = await axios.get(`${API_URL}/allinone/${hotelCode}/items/${itemId}/feedback`);
+        return response.data.data.stats;
       } catch {
-        ratings[item._id] = { averageRating: 0, totalReviews: 0 };
+        return { averageRating: 0, totalReviews: 0 };
       }
-    }
-    setItemRatings(ratings);
-  };
+    },
+    [hotelCode]
+  );
 
-  const filteredMenu = menu.map((categoryData) => ({
-    ...categoryData,
-    items: categoryData.items.filter((item) =>
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.description?.toLowerCase().includes(searchQuery.toLowerCase())
-    ),
-  })).filter((categoryData) => categoryData.items.length > 0);
+  useEffect(() => {
+    if (menu.length === 0) return;
+    let cancelled = false;
 
-  const activeCategoryData = selectedCategory
-    ? filteredMenu.find((cat) => cat.category._id === selectedCategory)
-    : filteredMenu[0];
+    const loadRatings = async () => {
+      const ids = menu.flatMap((cat) => cat.items.map((i) => i._id));
+      for (let i = 0; i < ids.length; i += RATING_BATCH_SIZE) {
+        if (cancelled) return;
+        const chunk = ids.slice(i, i + RATING_BATCH_SIZE);
+        const results = await Promise.all(chunk.map(fetchRating));
+        if (cancelled) return;
+        // Har batch ke baad update, taaki ratings progressively dikhein
+        setItemRatings((prev) => {
+          const next = { ...prev };
+          chunk.forEach((id, idx) => {
+            next[id] = results[idx];
+          });
+          return next;
+        });
+      }
+    };
+
+    loadRatings();
+    return () => {
+      cancelled = true;
+    };
+  }, [menu, fetchRating]);
+
+  // Review submit ke baad sirf us item ki rating refresh
+  const handleRatingUpdate = useCallback(
+    async (itemId) => {
+      const stats = await fetchRating(itemId);
+      setItemRatings((prev) => ({ ...prev, [itemId]: stats }));
+    },
+    [fetchRating]
+  );
+
+  // ── Search index: har item ka searchable text ek baar banta hai ──
+  const indexedMenu = useMemo(
+    () =>
+      menu.map((cat) => ({
+        ...cat,
+        items: cat.items.map((item) => ({
+          item,
+          text: [item.name, item.description, item.type, ...(item.tags || [])]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase(),
+        })),
+      })),
+    [menu]
+  );
+
+  // ── Search: hamesha poore menu mein; category counts bhi isi se ──
+  const searchedMenu = useMemo(() => {
+    const q = deferredQuery.trim().toLowerCase();
+
+    return indexedMenu
+      .map((cat) => {
+        const categoryNameMatch = q && cat.category.name?.toLowerCase().includes(q);
+        const items = cat.items
+          .filter(({ text }) => !q || categoryNameMatch || text.includes(q))
+          .map(({ item }) => item);
+        return { category: cat.category, items };
+      })
+      .filter((cat) => cat.items.length > 0);
+  }, [indexedMenu, deferredQuery]);
+
+  const totalMatches = useMemo(
+    () => searchedMenu.reduce((sum, cat) => sum + cat.items.length, 0),
+    [searchedMenu]
+  );
+
+  // ── All = saari categories | Category = sirf wahi (dono search-filtered) ──
+  const visibleSections = useMemo(
+    () =>
+      selectedCategory === ALL
+        ? searchedMenu
+        : searchedMenu.filter((cat) => cat.category._id === selectedCategory),
+    [searchedMenu, selectedCategory]
+  );
+
+  const isSearching = deferredQuery.trim().length > 0;
 
   // ─── Loading ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0f0e0c] flex items-center justify-center">
-        <style>{`
-          @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600&display=swap');
-          @keyframes spin { to { transform: rotate(360deg); } }
-          @keyframes pulse-glow {
-            0%, 100% { opacity: 0.6; transform: scale(1); }
-            50% { opacity: 1; transform: scale(1.05); }
-          }
-          .loader-ring { animation: spin 1s linear infinite; }
-          .loader-text { animation: pulse-glow 1.5s ease-in-out infinite; font-family: 'DM Sans', sans-serif; }
-        `}</style>
+        <style>{LOADER_STYLES}</style>
         <div className="flex flex-col items-center gap-5">
           <div className="relative w-16 h-16">
             <div className="loader-ring absolute inset-0 rounded-full border-4 border-transparent border-t-[#f97316] border-r-[#f97316]/40"></div>
@@ -116,7 +270,7 @@ export default function PublicMenuPage({ params }) {
   if (error) {
     return (
       <div className="min-h-screen bg-[#0f0e0c] flex items-center justify-center p-4">
-        <style>{`@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600&display=swap');`}</style>
+        <style>{LOADER_STYLES}</style>
         <div className="bg-[#1a1916] border border-[#2a2926] rounded-3xl p-10 max-w-sm w-full text-center shadow-2xl">
           <div className="text-5xl mb-5">⚠️</div>
           <h2 style={{ fontFamily: "'Playfair Display', serif" }} className="text-2xl font-bold text-white mb-3">Something went wrong</h2>
@@ -134,63 +288,16 @@ export default function PublicMenuPage({ params }) {
   }
 
   // ─── Main Page ─────────────────────────────────────────────────────────────
+  const isAllActive = selectedCategory === ALL;
+
   return (
     <div className="min-h-screen" style={{ background: '#faf8f5', fontFamily: "'DM Sans', sans-serif" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=DM+Sans:wght@400;500;600;700&display=swap');
-
-        * { box-sizing: border-box; }
-
-        /* Scrollbar */
-        ::-webkit-scrollbar { width: 4px; height: 4px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #f97316; border-radius: 99px; }
-
-        /* Category pill scrollbar hide */
-        .cat-scroll { scrollbar-width: none; -ms-overflow-style: none; }
-        .cat-scroll::-webkit-scrollbar { display: none; }
-
-        /* Card hover */
-        .menu-card { transition: transform 0.25s ease, box-shadow 0.25s ease; }
-        .menu-card:hover { transform: translateY(-4px); box-shadow: 0 20px 60px -12px rgba(249,115,22,0.18); }
-
-        /* Cart badge pulse */
-        @keyframes badge-pop {
-          0% { transform: scale(1); }
-          50% { transform: scale(1.3); }
-          100% { transform: scale(1); }
-        }
-        .badge-pop { animation: badge-pop 0.3s ease; }
-
-        /* Fade-in items */
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(16px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .fade-up { animation: fadeUp 0.4s ease forwards; }
-        .fade-up-delay-1 { animation-delay: 0.05s; opacity: 0; }
-        .fade-up-delay-2 { animation-delay: 0.1s; opacity: 0; }
-        .fade-up-delay-3 { animation-delay: 0.15s; opacity: 0; }
-
-        /* Float btn */
-        .float-btn { transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        .float-btn:hover { transform: translateY(-2px) scale(1.04); }
-        .float-btn:active { transform: scale(0.97); }
-
-        /* Add btn */
-        .add-btn { transition: all 0.18s ease; }
-        .add-btn:hover { background: #ea6b0e; transform: scale(1.03); }
-        .add-btn:active { transform: scale(0.97); }
-
-        /* Search focus */
-        .search-input:focus { box-shadow: 0 0 0 3px rgba(249,115,22,0.2); }
-      `}</style>
+      <style>{PAGE_STYLES}</style>
 
       {/* ── HEADER ─────────────────────────────────────────────────── */}
       <header className="bg-white border-b border-[#ede9e3] sticky top-0 z-40" style={{ boxShadow: '0 2px 20px rgba(0,0,0,0.06)' }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 gap-4">
-            {/* Left: Back + Name */}
             <div className="flex items-center gap-3 min-w-0">
               <button
                 onClick={() => router.push('/allinone')}
@@ -208,7 +315,6 @@ export default function PublicMenuPage({ params }) {
               </div>
             </div>
 
-            {/* Right: Cart */}
             <button
               onClick={openCart}
               className="flex-shrink-0 relative flex items-center gap-2 px-4 py-2.5 rounded-2xl text-white text-sm font-semibold transition-all active:scale-95"
@@ -237,15 +343,16 @@ export default function PublicMenuPage({ params }) {
             </svg>
             <input
               type="text"
-              placeholder="Search dishes, drinks…"
+              placeholder={isAllActive ? 'Search in all menu…' : 'Search in this category…'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="search-input w-full pl-10 pr-4 py-2.5 bg-[#faf8f5] border border-[#ede9e3] rounded-xl text-sm text-[#1a1412] placeholder-[#c5bfb8] outline-none transition-all"
+              className="search-input w-full pl-10 pr-10 py-2.5 bg-[#faf8f5] border border-[#ede9e3] rounded-xl text-sm text-[#1a1412] placeholder-[#c5bfb8] outline-none transition-all"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
                 className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[#c5bfb8] flex items-center justify-center hover:bg-[#a09890]"
+                aria-label="Clear search"
               >
                 <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
@@ -260,83 +367,87 @@ export default function PublicMenuPage({ params }) {
       <div className="bg-white border-b border-[#ede9e3] sticky top-[121px] z-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="cat-scroll flex gap-2 py-3 overflow-x-auto">
-            {filteredMenu.map((categoryData) => {
-              const isActive = selectedCategory === categoryData.category._id;
-              return (
-                <button
-                  key={categoryData.category._id}
-                  onClick={() => setSelectedCategory(categoryData.category._id)}
-                  className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-all whitespace-nowrap"
-                  style={isActive ? {
-                    background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
-                    color: '#fff',
-                    boxShadow: '0 4px 14px rgba(249,115,22,0.3)',
-                  } : {
-                    background: '#faf8f5',
-                    color: '#6b6460',
-                    border: '1.5px solid #ede9e3',
-                  }}
-                >
-                  {categoryData.category.name}
-                  <span
-                    className="text-xs rounded-full px-1.5 py-0.5 font-bold"
-                    style={isActive
-                      ? { background: 'rgba(255,255,255,0.25)', color: '#fff' }
-                      : { background: '#ede9e3', color: '#9a9690' }
-                    }
-                  >
-                    {categoryData.items.length}
-                  </span>
-                </button>
-              );
-            })}
+            {/* ✅ ALL pill */}
+            <CategoryPill
+              label="All"
+              count={totalMatches}
+              isActive={isAllActive}
+              onClick={() => setSelectedCategory(ALL)}
+            />
+
+            {searchedMenu.map((categoryData) => (
+              <CategoryPill
+                key={categoryData.category._id}
+                label={categoryData.category.name}
+                count={categoryData.items.length}
+                isActive={selectedCategory === categoryData.category._id}
+                onClick={() => setSelectedCategory(categoryData.category._id)}
+              />
+            ))}
           </div>
         </div>
       </div>
 
       {/* ── MAIN CONTENT ───────────────────────────────────────────── */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-32">
-        {activeCategoryData ? (
-          <>
-            {/* Category heading */}
-            <div className="mb-6 fade-up">
-              <h2
-                className="text-2xl sm:text-3xl font-bold text-[#1a1412] leading-tight"
-                style={{ fontFamily: "'Playfair Display', serif" }}
-              >
-                {activeCategoryData.category.name}
-              </h2>
-              {activeCategoryData.category.description && (
-                <p className="text-[#9a9690] mt-1.5 text-sm leading-relaxed max-w-lg">
-                  {activeCategoryData.category.description}
-                </p>
-              )}
-              <div className="mt-2 w-12 h-0.5 rounded-full bg-[#f97316]"></div>
-            </div>
+        {isSearching && (
+          <p className="text-sm text-[#9a9690] mb-4">
+            {isAllActive
+              ? `${totalMatches} result${totalMatches !== 1 ? 's' : ''} for “${deferredQuery.trim()}” in all menu`
+              : `Showing results for “${deferredQuery.trim()}” in this category`}
+          </p>
+        )}
 
-            {/* Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {activeCategoryData.items.map((item, idx) => (
-                <div
-                  key={item._id}
-                  className={`fade-up ${idx % 3 === 1 ? 'fade-up-delay-1' : idx % 3 === 2 ? 'fade-up-delay-2' : ''}`}
+        {visibleSections.length > 0 ? (
+          visibleSections.map((section) => (
+            <section key={section.category._id} className="mb-10">
+              <div className="mb-6 fade-up">
+                <h2
+                  className="text-2xl sm:text-3xl font-bold text-[#1a1412] leading-tight"
+                  style={{ fontFamily: "'Playfair Display', serif" }}
                 >
-                  <MenuItem
-                    item={item}
-                    onAddToCart={addToCart}
-                    rating={itemRatings[item._id]}
-                    hotelCode={hotelCode}
-                    onRatingUpdate={fetchAllRatings}
-                  />
-                </div>
-              ))}
-            </div>
-          </>
+                  {section.category.name}
+                </h2>
+                {section.category.description && (
+                  <p className="text-[#9a9690] mt-1.5 text-sm leading-relaxed max-w-lg">
+                    {section.category.description}
+                  </p>
+                )}
+                <div className="mt-2 w-12 h-0.5 rounded-full bg-[#f97316]"></div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {section.items.map((item, idx) => (
+                  <div
+                    key={item._id}
+                    className={`fade-up ${idx % 3 === 1 ? 'fade-up-delay-1' : idx % 3 === 2 ? 'fade-up-delay-2' : ''}`}
+                  >
+                    <MenuItem
+                      item={item}
+                      onAddToCart={stableAddToCart}
+                      rating={itemRatings[item._id]}
+                      hotelCode={hotelCode}
+                      onRatingUpdate={handleRatingUpdate}
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))
         ) : (
           <div className="flex flex-col items-center justify-center py-32 text-center fade-up">
             <div className="w-20 h-20 rounded-3xl bg-[#fde8d4] flex items-center justify-center mb-5 text-4xl">🔍</div>
             <h3 className="text-xl font-bold text-[#1a1412] mb-2" style={{ fontFamily: "'Playfair Display', serif" }}>No dishes found</h3>
-            <p className="text-[#9a9690] text-sm">Try a different search term</p>
+            <p className="text-[#9a9690] text-sm mb-4">Try a different search term</p>
+            {!isAllActive && isSearching && totalMatches > 0 && (
+              <button
+                onClick={() => setSelectedCategory(ALL)}
+                className="px-5 py-2.5 rounded-xl text-white text-sm font-semibold"
+                style={{ background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)' }}
+              >
+                Search in all menu ({totalMatches})
+              </button>
+            )}
           </div>
         )}
       </main>
@@ -367,20 +478,58 @@ export default function PublicMenuPage({ params }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Category Pill
+// ─────────────────────────────────────────────────────────────────────────────
+const CategoryPill = memo(function CategoryPill({ label, count, isActive, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-all whitespace-nowrap"
+      style={
+        isActive
+          ? {
+              background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+              color: '#fff',
+              boxShadow: '0 4px 14px rgba(249,115,22,0.3)',
+            }
+          : {
+              background: '#faf8f5',
+              color: '#6b6460',
+              border: '1.5px solid #ede9e3',
+            }
+      }
+    >
+      {label}
+      <span
+        className="text-xs rounded-full px-1.5 py-0.5 font-bold"
+        style={
+          isActive
+            ? { background: 'rgba(255,255,255,0.25)', color: '#fff' }
+            : { background: '#ede9e3', color: '#9a9690' }
+        }
+      >
+        {count}
+      </span>
+    </button>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ⭐ Star Display
 // ─────────────────────────────────────────────────────────────────────────────
-function StarDisplay({ rating, totalReviews, onReviewClick }) {
+const StarDisplay = memo(function StarDisplay({ rating, totalReviews, onReviewClick }) {
   const filled = Math.round(rating || 0);
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
       <div className="flex items-center gap-0.5">
-        {[1, 2, 3, 4, 5].map(star => (
+        {[1, 2, 3, 4, 5].map((star) => (
           <svg
             key={star}
             className={`w-3.5 h-3.5 ${star <= filled ? 'text-amber-400' : 'text-[#e8e3dc]'}`}
-            fill="currentColor" viewBox="0 0 20 20"
+            fill="currentColor"
+            viewBox="0 0 20 20"
           >
-            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+            <path d={STAR_PATH} />
           </svg>
         ))}
       </div>
@@ -399,12 +548,12 @@ function StarDisplay({ rating, totalReviews, onReviewClick }) {
       </button>
     </div>
   );
-}
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 🍽️ Menu Item Card
+// 🍽️ Menu Item Card (memo: search type karte waqt sirf badle hue cards render honge)
 // ─────────────────────────────────────────────────────────────────────────────
-function MenuItem({ item, onAddToCart, rating, hotelCode, onRatingUpdate }) {
+const MenuItem = memo(function MenuItem({ item, onAddToCart, rating, hotelCode, onRatingUpdate }) {
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [quantity, setQuantity] = useState(1);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -433,19 +582,8 @@ function MenuItem({ item, onAddToCart, rating, hotelCode, onRatingUpdate }) {
     setTimeout(() => setAddedFlash(false), 1200);
   };
 
-  const typeConfig = {
-    veg: { border: '#22c55e', dot: '#22c55e', label: 'Veg' },
-    'non-veg': { border: '#ef4444', dot: '#ef4444', label: 'Non-Veg' },
-    beverage: { border: '#60a5fa', dot: '#60a5fa', label: 'Beverage' },
-  };
-  const type = typeConfig[item.type] || null;
-
-  const spicyMap = {
-    mild: { label: '🌶 Mild', bg: '#fefce8', color: '#a16207' },
-    medium: { label: '🌶🌶 Medium', bg: '#fff7ed', color: '#c2410c' },
-    hot: { label: '🌶🌶🌶 Hot', bg: '#fef2f2', color: '#b91c1c' },
-  };
-  const spicy = spicyMap[item.spicyLevel];
+  const type = TYPE_CONFIG[item.type] || null;
+  const spicy = SPICY_MAP[item.spicyLevel];
 
   return (
     <>
@@ -460,6 +598,8 @@ function MenuItem({ item, onAddToCart, rating, hotelCode, onRatingUpdate }) {
               src={item.images[0]}
               alt={item.name}
               fill
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+              loading="lazy"
               className="object-cover transition-transform duration-500 group-hover:scale-105"
             />
           ) : (
@@ -471,7 +611,6 @@ function MenuItem({ item, onAddToCart, rating, hotelCode, onRatingUpdate }) {
             </div>
           )}
 
-          {/* Veg/Non-veg badge */}
           {type && (
             <div
               className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider"
@@ -487,7 +626,6 @@ function MenuItem({ item, onAddToCart, rating, hotelCode, onRatingUpdate }) {
             </div>
           )}
 
-          {/* Prep time badge */}
           {item.preparationTime && (
             <div
               className="absolute top-3 right-3 flex items-center gap-1 px-2 py-1 rounded-full text-xs text-white font-medium"
@@ -500,7 +638,6 @@ function MenuItem({ item, onAddToCart, rating, hotelCode, onRatingUpdate }) {
             </div>
           )}
 
-          {/* "Added!" flash overlay */}
           {addedFlash && (
             <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(249,115,22,0.15)', backdropFilter: 'blur(2px)' }}>
               <span className="bg-[#f97316] text-white text-sm font-bold px-4 py-2 rounded-xl shadow-lg">✓ Added!</span>
@@ -514,7 +651,6 @@ function MenuItem({ item, onAddToCart, rating, hotelCode, onRatingUpdate }) {
             {item.name}
           </h3>
 
-          {/* Stars */}
           <div className="mb-2">
             <StarDisplay
               rating={rating?.averageRating || 0}
@@ -527,7 +663,6 @@ function MenuItem({ item, onAddToCart, rating, hotelCode, onRatingUpdate }) {
             <p className="text-xs text-[#9a9690] mb-3 line-clamp-2 leading-relaxed">{item.description}</p>
           )}
 
-          {/* Tags */}
           {item.tags && item.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mb-3">
               {item.tags.slice(0, 3).map((tag, i) => (
@@ -542,7 +677,6 @@ function MenuItem({ item, onAddToCart, rating, hotelCode, onRatingUpdate }) {
             </div>
           )}
 
-          {/* Spicy level */}
           {spicy && item.spicyLevel !== 'none' && (
             <div className="mb-3">
               <span
@@ -554,7 +688,6 @@ function MenuItem({ item, onAddToCart, rating, hotelCode, onRatingUpdate }) {
             </div>
           )}
 
-          {/* Variants */}
           {item.variants && item.variants.length > 0 && (
             <div className="mb-3">
               <p className="text-xs font-semibold text-[#6b6460] mb-1.5 uppercase tracking-wide">Size</p>
@@ -566,11 +699,11 @@ function MenuItem({ item, onAddToCart, rating, hotelCode, onRatingUpdate }) {
                       key={variant.name}
                       onClick={() => setSelectedVariant(variant.name)}
                       className="px-3 py-1 rounded-full text-xs font-semibold transition-all"
-                      style={isSelected ? {
-                        background: '#f97316', color: '#fff', border: '1.5px solid #f97316',
-                      } : {
-                        background: '#faf8f5', color: '#6b6460', border: '1.5px solid #ede9e3',
-                      }}
+                      style={
+                        isSelected
+                          ? { background: '#f97316', color: '#fff', border: '1.5px solid #f97316' }
+                          : { background: '#faf8f5', color: '#6b6460', border: '1.5px solid #ede9e3' }
+                      }
                     >
                       {variant.name} · ₹{variant.price}
                     </button>
@@ -580,13 +713,11 @@ function MenuItem({ item, onAddToCart, rating, hotelCode, onRatingUpdate }) {
             </div>
           )}
 
-          {/* Price + Qty + Add */}
           <div className="mt-auto pt-3 border-t border-[#f5f0ea] flex items-center justify-between gap-2">
             <div>
               <p className="text-xl font-extrabold text-[#1a1412] leading-none">{formatPrice(getPrice())}</p>
             </div>
             <div className="flex items-center gap-2">
-              {/* Quantity stepper */}
               <div
                 className="flex items-center rounded-xl overflow-hidden"
                 style={{ border: '1.5px solid #ede9e3', background: '#faf8f5' }}
@@ -606,7 +737,6 @@ function MenuItem({ item, onAddToCart, rating, hotelCode, onRatingUpdate }) {
                 </button>
               </div>
 
-              {/* Add to Cart */}
               <button
                 onClick={handleAddToCart}
                 className="add-btn px-5 py-2 text-white text-sm font-bold rounded-xl"
@@ -627,12 +757,12 @@ function MenuItem({ item, onAddToCart, rating, hotelCode, onRatingUpdate }) {
           item={item}
           hotelCode={hotelCode}
           onClose={() => setShowReviewModal(false)}
-          onSubmitted={() => onRatingUpdate && onRatingUpdate()}
+          onSubmitted={() => onRatingUpdate && onRatingUpdate(item._id)}
         />
       )}
     </>
   );
-}
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ⭐ Review Modal
@@ -645,8 +775,6 @@ function ReviewModal({ item, hotelCode, onClose, onSubmitted }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-
   const handleSubmit = async () => {
     if (!rating) return setError('Please select a rating');
     setLoading(true);
@@ -655,7 +783,12 @@ function ReviewModal({ item, hotelCode, onClose, onSubmitted }) {
       const res = await fetch(`${API_URL}/allinone/${hotelCode}/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ menuItemId: item._id, rating, comment, customer: { name: name.trim() || 'Anonymous' } }),
+        body: JSON.stringify({
+          menuItemId: item._id,
+          rating,
+          comment,
+          customer: { name: name.trim() || 'Anonymous' },
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
@@ -668,8 +801,6 @@ function ReviewModal({ item, hotelCode, onClose, onSubmitted }) {
     }
   };
 
-  const ratingLabels = ['', '😞 Poor', '😐 Fair', '🙂 Good', '😊 Great', '🤩 Excellent!'];
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
@@ -679,7 +810,6 @@ function ReviewModal({ item, hotelCode, onClose, onSubmitted }) {
         className="bg-white rounded-3xl w-full max-w-md overflow-hidden"
         style={{ boxShadow: '0 32px 80px rgba(0,0,0,0.25)' }}
       >
-        {/* Modal Header */}
         <div
           className="px-6 py-5 flex items-start justify-between"
           style={{ background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)' }}
@@ -701,11 +831,10 @@ function ReviewModal({ item, hotelCode, onClose, onSubmitted }) {
         </div>
 
         <div className="p-6 space-y-4">
-          {/* Star Picker */}
           <div className="text-center">
             <p className="text-xs font-semibold text-[#9a9690] uppercase tracking-widest mb-3">How was it?</p>
             <div className="flex items-center justify-center gap-1.5">
-              {[1, 2, 3, 4, 5].map(star => (
+              {[1, 2, 3, 4, 5].map((star) => (
                 <button
                   key={star}
                   onClick={() => setRating(star)}
@@ -715,51 +844,49 @@ function ReviewModal({ item, hotelCode, onClose, onSubmitted }) {
                 >
                   <svg
                     className={`w-10 h-10 transition-all duration-150 ${star <= (hovered || rating) ? 'text-amber-400 drop-shadow-sm' : 'text-[#e8e3dc]'}`}
-                    fill="currentColor" viewBox="0 0 20 20"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
                   >
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    <path d={STAR_PATH} />
                   </svg>
                 </button>
               ))}
             </div>
             {rating > 0 && (
-              <p className="text-sm font-semibold text-[#f97316] mt-2">{ratingLabels[rating]}</p>
+              <p className="text-sm font-semibold text-[#f97316] mt-2">{RATING_LABELS[rating]}</p>
             )}
           </div>
 
-          {/* Comment */}
           <textarea
             value={comment}
-            onChange={e => setComment(e.target.value)}
+            onChange={(e) => setComment(e.target.value)}
             placeholder="Share your experience (optional)…"
             rows={3}
             className="w-full px-4 py-3 text-sm text-[#1a1412] placeholder-[#c5bfb8] rounded-xl outline-none resize-none transition-all"
             style={{ border: '1.5px solid #ede9e3', background: '#faf8f5' }}
-            onFocus={e => e.target.style.borderColor = '#f97316'}
-            onBlur={e => e.target.style.borderColor = '#ede9e3'}
+            onFocus={(e) => (e.target.style.borderColor = '#f97316')}
+            onBlur={(e) => (e.target.style.borderColor = '#ede9e3')}
           />
 
-          {/* Customer Info */}
           <input
             value={name}
-            onChange={e => setName(e.target.value)}
+            onChange={(e) => setName(e.target.value)}
             placeholder="Your name (optional)"
             type="text"
             className="w-full px-4 py-2.5 text-sm text-[#1a1412] placeholder-[#c5bfb8] rounded-xl outline-none transition-all"
             style={{ border: '1.5px solid #ede9e3', background: '#faf8f5' }}
-            onFocus={e => e.target.style.borderColor = '#f97316'}
-            onBlur={e => e.target.style.borderColor = '#ede9e3'}
+            onFocus={(e) => (e.target.style.borderColor = '#f97316')}
+            onBlur={(e) => (e.target.style.borderColor = '#ede9e3')}
           />
 
           {error && (
             <p className="text-xs text-center font-medium" style={{ color: '#ef4444' }}>{error}</p>
           )}
 
-          {/* Submit */}
           <button
             onClick={handleSubmit}
             disabled={loading}
-            className="w-full py-3 text-white text-sm font-bold rounded-xl transition-all active:scale-98 disabled:opacity-60"
+            className="w-full py-3 text-white text-sm font-bold rounded-xl transition-all active:scale-95 disabled:opacity-60"
             style={{
               background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
               boxShadow: '0 6px 20px rgba(249,115,22,0.35)',

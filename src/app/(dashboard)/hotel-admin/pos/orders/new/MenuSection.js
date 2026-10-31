@@ -1,12 +1,130 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef, useDeferredValue, memo } from 'react';
 import { apiRequest } from '@/services/api';
 import { useOrder } from '@/context/OrderContext';
-import { Loader2, X, Search, AlertCircle, Plus, Minus } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { X, Search, AlertCircle } from 'lucide-react';
 
+// ─────────────────────────────────────────────
+// Menu cache (60 sec). Revisit par instant, background me refresh.
+// Hotel key ke saath, taaki dusre hotel ka menu kabhi na dikhe.
+// ─────────────────────────────────────────────
+const MENU_TTL = 60 * 1000;
+const menuCache = { key: null, data: null, time: 0, promise: null };
+
+const getCachedMenu = (key) =>
+  menuCache.key === key && menuCache.data ? menuCache : null;
+
+const loadMenu = (key) => {
+  if (menuCache.promise && menuCache.key === key) return menuCache.promise;
+
+  const promise = apiRequest('/pos/menu')
+    .then((res) => {
+      const data = res.data.menu || [];
+      menuCache.key = key;
+      menuCache.data = data;
+      menuCache.time = Date.now();
+      return data;
+    })
+    .finally(() => {
+      if (menuCache.promise === promise) menuCache.promise = null;
+    });
+
+  menuCache.key = key;
+  menuCache.promise = promise;
+  return promise;
+};
+
+// Cashier page isko call karke menu pehle se warm kar leta hai
+export const prefetchMenu = (key = 'default') => {
+  const cached = getCachedMenu(key);
+  if (cached && Date.now() - cached.time < MENU_TTL) return;
+  loadMenu(key).catch(() => {});
+};
+
+// ─────────────────────────────────────────────
+// Menu item card (memo: cart update par re-render nahi hota)
+// ─────────────────────────────────────────────
+const MenuItemCard = memo(function MenuItemCard({ item, onAdd, onPickVariant }) {
+  return (
+    <div
+      className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-lg transition-shadow"
+      style={{ contentVisibility: 'auto', containIntrinsicSize: '0 380px' }}
+    >
+      {item.image && (
+        <div className="h-48 bg-gray-200 dark:bg-gray-700">
+          <img
+            src={item.image}
+            alt={item.name}
+            loading="lazy"
+            decoding="async"
+            className="w-full h-full object-cover"
+          />
+        </div>
+      )}
+
+      <div className="p-4">
+        <div className="mb-1">
+          <h4 className="font-semibold text-gray-900 dark:text-white leading-snug break-words">
+            {item.name}
+          </h4>
+          <span className="text-lg font-bold text-[rgb(0,173,181)]">
+            ₹{item.price}
+          </span>
+        </div>
+
+        {/* Sub-category badge — sirf tab dikhao jab ho */}
+        {item.subCategory && (
+          <span className="inline-block mb-2 px-2 py-0.5 text-[10px] font-medium rounded-full bg-[rgb(0,173,181)]/10 text-[rgb(0,173,181)] border border-[rgb(0,173,181)]/30">
+            {item.subCategory.name || item.subCategory}
+          </span>
+        )}
+
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
+          {item.description || 'No description'}
+        </p>
+
+        <div className="flex flex-wrap gap-2 mb-3">
+          {item.type && (
+            <span className={`px-2 py-1 text-xs rounded-full ${
+              item.type === 'veg' ? 'bg-green-100 text-green-800' :
+              item.type === 'non-veg' ? 'bg-red-100 text-red-800' :
+              'bg-purple-100 text-purple-800'
+            }`}>
+              {item.type.toUpperCase()}
+            </span>
+          )}
+          {!item.isAvailable && (
+            <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">
+              Out of Stock
+            </span>
+          )}
+        </div>
+
+        <button
+          onClick={() => (item.variants?.length > 0 ? onPickVariant(item) : onAdd(item))}
+          disabled={!item.isAvailable}
+          className={`w-full px-4 py-2 rounded-lg font-medium transition-all ${
+            item.isAvailable
+              ? 'bg-[rgb(0,173,181)] text-white hover:bg-[rgb(0,173,181)]/90'
+              : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+          }`}
+        >
+          {item.variants?.length > 0 ? 'Select Variant' : 'Add'}
+        </button>
+      </div>
+    </div>
+  );
+});
+
+// ─────────────────────────────────────────────
+// Main
+// ─────────────────────────────────────────────
 export default function MenuSection() {
   const { addItem } = useOrder();
+  const { user } = useAuth();
+  const cacheKey = user?.hotel?._id || user?._id || 'default';
 
   const [menu, setMenu] = useState([]);
   const [activeCategoryId, setActiveCategoryId] = useState(null);
@@ -15,42 +133,63 @@ export default function MenuSection() {
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [variantPicker, setVariantPicker] = useState(null);
-  const [quantity, setQuantity] = useState(1);
 
+  // Typing smooth rahe, filtering deferred
+  const deferredQuery = useDeferredValue(searchQuery);
+
+  // addItem ka latest reference (context badalne par cards re-render na hon)
+  const addItemRef = useRef(addItem);
+  addItemRef.current = addItem;
+
+  // ── Fetch (cache pehle, phir background refresh) ──
   useEffect(() => {
-    const fetchMenu = async () => {
-      try {
-        const res = await apiRequest('/pos/menu');
-        const menuData = res.data.menu || [];
-        setMenu(menuData);
-        if (menuData.length) {
-          setActiveCategoryId(menuData[0].category._id);
-        }
-      } catch (err) {
-        console.error('Failed to load menu:', err);
-        setError('Failed to load menu. Please try again.');
-      } finally {
-        setLoading(false);
-      }
+    let cancelled = false;
+
+    const applyMenu = (data) => {
+      setMenu(data);
+      setActiveCategoryId((prev) => prev ?? data[0]?.category._id ?? null);
+      setLoading(false);
     };
 
-    fetchMenu();
-  }, []);
+    const cached = getCachedMenu(cacheKey);
+    if (cached) applyMenu(cached.data);
+
+    const isFresh = cached && Date.now() - cached.time < MENU_TTL;
+    if (!isFresh) {
+      loadMenu(cacheKey)
+        .then((data) => {
+          if (!cancelled) applyMenu(data);
+        })
+        .catch((err) => {
+          console.error('Failed to load menu:', err);
+          if (cancelled) return;
+          if (!cached) setError('Failed to load menu. Please try again.');
+          setLoading(false);
+        });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cacheKey]);
 
   // Jab category change ho, subcategory reset ho jaye
-  const handleCategoryChange = (categoryId) => {
+  const handleCategoryChange = useCallback((categoryId) => {
     setActiveCategoryId(categoryId);
     setActiveSubCategoryId('all');
-  };
+  }, []);
 
   // Active category ka data
-  const activeCategory = menu.find(cat => cat.category._id === activeCategoryId) || menu[0];
+  const activeCategory = useMemo(
+    () => menu.find((cat) => cat.category._id === activeCategoryId) || menu[0],
+    [menu, activeCategoryId]
+  );
 
   // Active category ke items se subcategories nikalo (unique)
-  const subCategoriesInActiveCategory = (() => {
+  const subCategoriesInActiveCategory = useMemo(() => {
     if (!activeCategory) return [];
     const map = new Map();
-    activeCategory.items.forEach(item => {
+    activeCategory.items.forEach((item) => {
       if (item.subCategory) {
         const id = item.subCategory._id || item.subCategory;
         const name = item.subCategory.name || item.subCategory;
@@ -58,55 +197,53 @@ export default function MenuSection() {
       }
     });
     return Array.from(map.values());
-  })();
+  }, [activeCategory]);
 
-   // Search + subcategory filter
-  const filteredItems = (() => {
-    // 🔍 Agar search active hai to SAARI categories me se match dhoondo (global search)
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const allItems = menu.flatMap(cat => cat.items);
-      return allItems.filter(item =>
-        item.name.toLowerCase().includes(q) ||
-        item.description?.toLowerCase().includes(q)
-      );
+  // Global search ke liye: saare items + unka lowercase text (ek baar banta hai)
+  const allItems = useMemo(() => menu.flatMap((cat) => cat.items), [menu]);
+
+  const searchTextMap = useMemo(() => {
+    const map = new Map();
+    allItems.forEach((item) => {
+      map.set(item._id, `${item.name || ''} ${item.description || ''}`.toLowerCase());
+    });
+    return map;
+  }, [allItems]);
+
+  // Search + subcategory filter
+  const filteredItems = useMemo(() => {
+    const q = deferredQuery.trim().toLowerCase();
+
+    // 🔍 Search active hai to SAARI categories me se match
+    if (q) {
+      return allItems.filter((item) => (searchTextMap.get(item._id) || '').includes(q));
     }
 
-    // Search nahi hai to normal active-category + subcategory filter
+    // Search nahi hai to active-category + subcategory filter
     if (!activeCategory) return [];
-    return activeCategory.items.filter(item => {
-      const matchesSubCategory =
-        activeSubCategoryId === 'all' ||
-        (item.subCategory &&
-          (item.subCategory._id || item.subCategory) === activeSubCategoryId);
-      return matchesSubCategory;
-    });
-  })();
+    if (activeSubCategoryId === 'all') return activeCategory.items;
 
-  // Search ke time filtered categories (category tabs ke liye)
-  const filteredMenu = menu
-    .map(category => ({
-      ...category,
-      items: category.items.filter(item =>
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.description?.toLowerCase().includes(searchQuery.toLowerCase())
-      ),
-    }))
-    .filter(category => category.items.length > 0);
+    return activeCategory.items.filter(
+      (item) =>
+        item.subCategory &&
+        (item.subCategory._id || item.subCategory) === activeSubCategoryId
+    );
+  }, [deferredQuery, allItems, searchTextMap, activeCategory, activeSubCategoryId]);
 
-  const handleAddItem = (item, variant = null) => {
+  // Stable handlers
+  const handleAddItem = useCallback((item, variant = null) => {
     if (!item.isAvailable) return;
 
-    addItem({
+    addItemRef.current({
       menuItemId: item._id,
       name: item.name,
       price: variant ? variant.price : item.price,
       variant: variant ? variant.name : null,
-      quantity,
+      quantity: 1,
     });
+  }, []);
 
-    setQuantity(1);
-  };
+  const handlePickVariant = useCallback((item) => setVariantPicker(item), []);
 
   if (loading) {
     return (
@@ -158,7 +295,7 @@ export default function MenuSection() {
             type="text"
             placeholder="Search menu..."
             value={searchQuery}
-            onChange={e => {
+            onChange={(e) => {
               setSearchQuery(e.target.value);
               setActiveSubCategoryId('all');
             }}
@@ -198,7 +335,7 @@ export default function MenuSection() {
               All
             </button>
 
-            {subCategoriesInActiveCategory.map(sub => (
+            {subCategoriesInActiveCategory.map((sub) => (
               <button
                 key={sub._id}
                 onClick={() => setActiveSubCategoryId(sub._id)}
@@ -224,71 +361,12 @@ export default function MenuSection() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredItems.map((item) => (
-              <div
+              <MenuItemCard
                 key={item._id}
-                className="bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-lg transition-shadow"
-              >
-                {item.image && (
-                  <div className="h-48 bg-gray-200 dark:bg-gray-700">
-                    <img
-                      src={item.image}
-                      alt={item.name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                )}
-
-                <div className="p-4">
-                  <div className="mb-1">
-                    <h4 className="font-semibold text-gray-900 dark:text-white leading-snug break-words">
-                      {item.name}
-                    </h4>
-                    <span className="text-lg font-bold text-[rgb(0,173,181)]">
-                      ₹{item.price}
-                    </span>
-                  </div>
-
-                  {/* Sub-category badge — sirf tab dikhao jab ho */}
-                  {item.subCategory && (
-                    <span className="inline-block mb-2 px-2 py-0.5 text-[10px] font-medium rounded-full bg-[rgb(0,173,181)]/10 text-[rgb(0,173,181)] border border-[rgb(0,173,181)]/30">
-                      {item.subCategory.name || item.subCategory}
-                    </span>
-                  )}
-
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
-                    {item.description || 'No description'}
-                  </p>
-
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {item.type && (
-                      <span className={`px-2 py-1 text-xs rounded-full ${
-                        item.type === 'veg' ? 'bg-green-100 text-green-800' :
-                        item.type === 'non-veg' ? 'bg-red-100 text-red-800' :
-                        'bg-purple-100 text-purple-800'
-                      }`}>
-                        {item.type.toUpperCase()}
-                      </span>
-                    )}
-                    {!item.isAvailable && (
-                      <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">
-                        Out of Stock
-                      </span>
-                    )}
-                  </div>
-
-                  <button
-                    onClick={() => item.variants?.length > 0 ? setVariantPicker(item) : handleAddItem(item)}
-                    disabled={!item.isAvailable}
-                    className={`w-full px-4 py-2 rounded-lg font-medium transition-all ${
-                      item.isAvailable
-                        ? 'bg-[rgb(0,173,181)] text-white hover:bg-[rgb(0,173,181)]/90'
-                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    }`}
-                  >
-                    {item.variants?.length > 0 ? 'Select Variant' : 'Add'}
-                  </button>
-                </div>
-              </div>
+                item={item}
+                onAdd={handleAddItem}
+                onPickVariant={handlePickVariant}
+              />
             ))}
           </div>
         )}

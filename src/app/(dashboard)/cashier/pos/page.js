@@ -1,17 +1,34 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useOrder, OrderProvider } from '@/context/OrderContext'
-import MenuSection from '../../hotel-admin/pos/orders/new/MenuSection'
-import CartSection from '../../hotel-admin/pos/orders/new/CartSection'
-import PaymentModal from '@/components/cashier/PaymentModal'
+import { useAuth } from '@/context/AuthContext'
 import { connectPOSSocket, disconnectPOSSocket } from '@/services/posSocket'
 import { apiRequest } from '@/services/api'
 import { Loader2, AlertCircle, Users, BedDouble, ShoppingCart, X, Lock } from 'lucide-react'
 
+const MENU_PATH = '../../hotel-admin/pos/orders/new/MenuSection'
+
+// ✅ Heavy components lazy-load (initial page bundle halka)
+const PanelLoader = () => (
+  <div className="flex items-center justify-center p-10">
+    <Loader2 className="h-8 w-8 animate-spin text-[rgb(0,173,181)]" />
+  </div>
+)
+
+const MenuSection = dynamic(() => import('../../hotel-admin/pos/orders/new/MenuSection'), {
+  loading: PanelLoader,
+})
+const CartSection = dynamic(() => import('../../hotel-admin/pos/orders/new/CartSection'), {
+  loading: PanelLoader,
+})
+const PaymentModal = dynamic(() => import('@/components/cashier/PaymentModal'))
+
 function NewOrderContent() {
   const { order, startOrder, resetOrder } = useOrder()
+  const { user } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -36,27 +53,97 @@ function NewOrderContent() {
   const [createdOrder, setCreatedOrder] = useState(null)
   const [showCart, setShowCart] = useState(false)
 
+  // Refs: socket handlers ko latest value mile bina socket dobara connect kiye
+  const orderTypeRef = useRef(orderType)
+  const tablesLoadedRef = useRef(false)
+  const roomsLoadedRef = useRef(false)
+  const tableTimerRef = useRef(null)
+  const roomTimerRef = useRef(null)
+
+  useEffect(() => {
+    orderTypeRef.current = orderType
+  }, [orderType])
+
+  // ── Fetchers (stable, loader sirf pehli baar dikhta hai) ──
+  const fetchAvailableTables = useCallback(async () => {
+    if (!tablesLoadedRef.current) setLoadingTables(true)
+    setErrors(prev => ({ ...prev, tables: null }))
+
+    try {
+      const res = await apiRequest('/tables')
+      const tables = res.data?.tables || res.data || []
+      // available + occupied dono dikhao — occupied pe click karke existing order me add ho sake
+      setAvailableTables(tables.filter(t => ['available', 'occupied'].includes(t.status)))
+      tablesLoadedRef.current = true
+    } catch (err) {
+      setErrors(prev => ({ ...prev, tables: 'Failed to load available tables' }))
+    } finally {
+      setLoadingTables(false)
+    }
+  }, [])
+
+  const fetchAvailableRooms = useCallback(async () => {
+    if (!roomsLoadedRef.current) setLoadingRooms(true)
+    setErrors(prev => ({ ...prev, rooms: null }))
+
+    try {
+      const res = await apiRequest('/rooms')
+      const rooms = res.data?.rooms || res.data || []
+      setAvailableRooms(rooms.filter(r => r.status === 'occupied'))
+      roomsLoadedRef.current = true
+    } catch (err) {
+      setErrors(prev => ({ ...prev, rooms: 'Failed to load available rooms' }))
+    } finally {
+      setLoadingRooms(false)
+    }
+  }, [])
+
+  // ✅ Socket sirf EK baar connect hota hai (pehle orderType badalte hi reconnect hota tha)
   useEffect(() => {
     const socket = connectPOSSocket()
 
-    socket.on('table:updated', () => {
-      if (orderType === 'dine-in') fetchAvailableTables()
-    })
+    const onTableUpdated = () => {
+      if (orderTypeRef.current !== 'dine-in') return
+      clearTimeout(tableTimerRef.current)
+      tableTimerRef.current = setTimeout(fetchAvailableTables, 300) // debounce
+    }
 
-    socket.on('room:updated', () => {
-      if (orderType === 'room-service') fetchAvailableRooms()
-    })
+    const onRoomUpdated = () => {
+      if (orderTypeRef.current !== 'room-service') return
+      clearTimeout(roomTimerRef.current)
+      roomTimerRef.current = setTimeout(fetchAvailableRooms, 300) // debounce
+    }
 
-    return () => disconnectPOSSocket()
-  }, [orderType])
+    socket.on('table:updated', onTableUpdated)
+    socket.on('room:updated', onRoomUpdated)
+
+    return () => {
+      clearTimeout(tableTimerRef.current)
+      clearTimeout(roomTimerRef.current)
+      socket.off?.('table:updated', onTableUpdated)
+      socket.off?.('room:updated', onRoomUpdated)
+      disconnectPOSSocket()
+    }
+  }, [fetchAvailableTables, fetchAvailableRooms])
 
   useEffect(() => {
     if (orderType === 'dine-in') fetchAvailableTables()
-  }, [orderType])
+  }, [orderType, fetchAvailableTables])
 
   useEffect(() => {
     if (orderType === 'room-service') fetchAvailableRooms()
-  }, [orderType])
+  }, [orderType, fetchAvailableRooms])
+
+  // ✅ Warm-up: user table/room chun raha hota hai tab tak menu chunk + menu data background me aa jaye
+  useEffect(() => {
+    const id = setTimeout(() => {
+      import('../../hotel-admin/pos/orders/new/MenuSection')
+        .then(m => m.prefetchMenu?.(user?.hotel?._id || user?._id || 'default'))
+        .catch(() => {})
+      import('../../hotel-admin/pos/orders/new/CartSection').catch(() => {})
+    }, 300)
+    return () => clearTimeout(id)
+  }, [user])
 
   // 🔥 existing (held) order fetch karke seedha cart pe le jao
   const loadExistingOrder = async (orderId) => {
@@ -82,37 +169,6 @@ function NewOrderContent() {
     if (!queryAddToOrderId) return
     loadExistingOrder(queryAddToOrderId)
   }, [queryAddToOrderId])
-
-  const fetchAvailableTables = async () => {
-    setLoadingTables(true)
-    setErrors(prev => ({ ...prev, tables: null }))
-
-    try {
-      const res = await apiRequest('/tables')
-      const tables = res.data?.tables || res.data || []
-      // 🔥 ab available + occupied dono dikhao — occupied pe click karke existing order me add ho sake
-      setAvailableTables(tables.filter(t => ['available', 'occupied'].includes(t.status)))
-    } catch (err) {
-      setErrors(prev => ({ ...prev, tables: 'Failed to load available tables' }))
-    } finally {
-      setLoadingTables(false)
-    }
-  }
-
-  const fetchAvailableRooms = async () => {
-    setLoadingRooms(true)
-    setErrors(prev => ({ ...prev, rooms: null }))
-
-    try {
-      const res = await apiRequest('/rooms')
-      const rooms = res.data?.rooms || res.data || []
-      setAvailableRooms(rooms.filter(r => r.status === 'occupied'))
-    } catch (err) {
-      setErrors(prev => ({ ...prev, rooms: 'Failed to load available rooms' }))
-    } finally {
-      setLoadingRooms(false)
-    }
-  }
 
   // 🔥 occupied table pe click → uski active/unpaid order dhoondo, add-items mode me le jao
   const handleOccupiedTableClick = async (table) => {
@@ -341,19 +397,19 @@ function NewOrderContent() {
   }
 
   return (
-   <div className="flex flex-col lg:flex-row bg-gray-50 min-h-full">
-  <div className="flex-1 min-w-0 bg-white">
-  <MenuSection />
-</div>
+    <div className="flex flex-col lg:flex-row bg-gray-50 min-h-full">
+      <div className="flex-1 min-w-0 bg-white">
+        <MenuSection />
+      </div>
 
-   <div className="hidden lg:block lg:w-96 lg:flex-shrink-0 border-l-2 border-gray-200 bg-white shadow-xl lg:sticky lg:top-0 lg:self-start lg:max-h-screen lg:overflow-y-auto">
-      <CartSection
-        onOrderSuccess={handleOrderSuccess}
-        requirePayment={true}
-        existingOrderId={addToOrderId}
-        existingOrderMeta={existingOrderMeta}
-      />
-    </div>
+      <div className="hidden lg:block lg:w-96 lg:flex-shrink-0 border-l-2 border-gray-200 bg-white shadow-xl lg:sticky lg:top-0 lg:self-start lg:max-h-screen lg:overflow-y-auto">
+        <CartSection
+          onOrderSuccess={handleOrderSuccess}
+          requirePayment={true}
+          existingOrderId={addToOrderId}
+          existingOrderMeta={existingOrderMeta}
+        />
+      </div>
 
       <button
         onClick={() => setShowCart(true)}

@@ -9,7 +9,7 @@ const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(null); // 🔥 ADD THIS
+  const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -17,7 +17,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await apiRequest('/auth/me');
       setUser(res.data.user);
-      handleRoleRedirect(res.data.user.role);
+      // ✅ Yahan redirect NAHI: refresh par user usi page par rahega
     } catch (err) {
       logout();
     } finally {
@@ -31,18 +31,16 @@ export const AuthProvider = ({ children }) => {
       body: JSON.stringify({ email, password }),
     });
 
-    
-
     const authToken = res.data.token;
     localStorage.setItem('token', authToken);
-    setToken(authToken); // 🔥 SET TOKEN IN STATE
+    setToken(authToken);
     setUser(res.data.user);
-    handleRoleRedirect(res.data.user.role);
+    handleRoleRedirect(res.data.user.role); // ✅ redirect sirf login par
   };
 
   const logout = () => {
     localStorage.removeItem('token');
-    setToken(null); // 🔥 CLEAR TOKEN FROM STATE
+    setToken(null);
     setUser(null);
     router.push('/login');
   };
@@ -74,7 +72,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const storedToken = localStorage.getItem('token');
     if (storedToken) {
-      setToken(storedToken); // 🔥 SET TOKEN FROM LOCALSTORAGE
+      setToken(storedToken);
       fetchProfile();
     } else {
       setLoading(false);
@@ -82,9 +80,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   return (
-    <AuthContext.Provider
-      value={{ user, token, login, logout, loading }} // 🔥 ADD TOKEN HERE
-    >
+    <AuthContext.Provider value={{ user, token, login, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );

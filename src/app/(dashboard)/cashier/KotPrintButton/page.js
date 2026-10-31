@@ -56,7 +56,7 @@ export default function KotPrintButton({ orderId, orderNumber }) {
 }
 
 // ============================================
-// KOT HTML Generator — 80mm thermal, NO PRICE
+// KOT HTML Generator — 80mm thermal, NO PRICE, EXTRA DARK
 // ============================================
 function generateKOTHtml(kot) {
   const formatTime = (dateStr) => {
@@ -75,16 +75,14 @@ function generateKOTHtml(kot) {
 
   const itemsHtml = kot.items.map(item => `
     <tr>
-      <td style="padding: 4px 2px; font-size: 14px; font-weight: bold; vertical-align: top;">
-        ${item.quantity}x
-      </td>
-      <td style="padding: 4px 2px; font-size: 14px; vertical-align: top; width: 100%;">
+      <td class="qty">${item.quantity}x</td>
+      <td class="item-name">
         ${item.name}
-        ${item.variant ? `<div style="font-size: 11px; color: #555;">(${item.variant})</div>` : ''}
-        ${item.specialInstructions ? `<div style="font-size: 11px; font-style: italic; color: #333;">⚠ ${item.specialInstructions}</div>` : ''}
+        ${item.variant ? `<div class="sub">(${item.variant})</div>` : ''}
+        ${item.specialInstructions ? `<div class="sub note">⚠ ${item.specialInstructions}</div>` : ''}
       </td>
     </tr>
-    <tr><td colspan="2"><div style="border-bottom: 1px dashed #ccc; margin: 2px 0;"></div></td></tr>
+    <tr><td colspan="2"><div class="item-line"></div></td></tr>
   `).join('')
 
   return `
@@ -94,65 +92,111 @@ function generateKOTHtml(kot) {
       <meta charset="UTF-8" />
       <title>KOT - ${kot.kotNumber}</title>
       <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+          color: #000 !important;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
 
         @page {
           size: 80mm auto;
-          margin: 4mm 4mm;
+          margin: 3mm 3mm;
         }
 
         body {
-          font-family: 'Courier New', Courier, monospace;
-          font-size: 13px;
+          font-family: Arial, Helvetica, sans-serif;
+          font-size: 15px;
+          font-weight: 900;
           color: #000;
-          width: 72mm;
+          width: 74mm;
           background: #fff;
+          -webkit-text-stroke: 0.6px #000;
+          text-shadow: 0.4px 0 0 #000, -0.4px 0 0 #000;
         }
 
         .center { text-align: center; }
-        .bold { font-weight: bold; }
-        .divider { border-top: 2px dashed #000; margin: 6px 0; }
-        .divider-solid { border-top: 2px solid #000; margin: 6px 0; }
+        .bold { font-weight: 900; }
+
+        .divider { border-top: 3px dashed #000; margin: 8px 0; }
+        .divider-solid { border-top: 4px solid #000; margin: 8px 0; }
+        .item-line { border-bottom: 2px dashed #000; margin: 3px 0; }
 
         .hotel-name {
-          font-size: 18px;
+          font-size: 22px;
           font-weight: 900;
           letter-spacing: 1px;
           text-transform: uppercase;
+          -webkit-text-stroke: 1px #000;
         }
 
         .kot-tag {
-          font-size: 11px;
-          letter-spacing: 2px;
-          font-weight: bold;
+          font-size: 13px;
+          letter-spacing: 1px;
+          font-weight: 900;
           margin-top: 4px;
         }
 
         .kot-number {
-          font-size: 28px;
+          font-size: 34px;
           font-weight: 900;
           letter-spacing: 1px;
+          -webkit-text-stroke: 1.2px #000;
         }
 
         .location-badge {
-          font-size: 16px;
-          font-weight: bold;
-          border: 2px solid #000;
-          padding: 3px 8px;
+          font-size: 20px;
+          font-weight: 900;
+          border: 3px solid #000;
+          padding: 4px 10px;
           display: inline-block;
-          margin: 4px 0;
+          margin: 6px 0;
         }
 
         table { width: 100%; border-collapse: collapse; }
 
+        .qty {
+          padding: 5px 4px 5px 0;
+          font-size: 20px;
+          font-weight: 900;
+          vertical-align: top;
+          white-space: nowrap;
+          -webkit-text-stroke: 1px #000;
+        }
+
+        .item-name {
+          padding: 5px 2px;
+          font-size: 18px;
+          font-weight: 900;
+          vertical-align: top;
+          width: 100%;
+          -webkit-text-stroke: 0.9px #000;
+        }
+
+        .sub {
+          font-size: 14px;
+          font-weight: 900;
+          margin-top: 2px;
+        }
+
+        .note { font-style: italic; }
+
+        .meta {
+          font-size: 14px;
+          font-weight: 900;
+          margin-bottom: 4px;
+        }
+
         .footer {
-          font-size: 10px;
-          color: #555;
+          font-size: 13px;
+          font-weight: 900;
           margin-top: 8px;
         }
 
         @media print {
-          body { width: 72mm; }
+          body { width: 74mm; }
           button { display: none; }
         }
       </style>
@@ -171,23 +215,19 @@ function generateKOTHtml(kot) {
       <div class="center">
         <div class="kot-number">#${kot.kotNumber}</div>
         <div class="location-badge">${locationLine()}</div>
-        ${kot.customerName ? `<div style="font-size:12px; margin-top:3px;">Customer: ${kot.customerName}</div>` : ''}
+        ${kot.customerName ? `<div class="meta" style="margin-top:4px;">Customer: ${kot.customerName}</div>` : ''}
       </div>
 
       <div class="divider"></div>
 
       <!-- Time -->
-      <div style="font-size: 11px; margin-bottom: 4px;">
-        <span class="bold">Placed:</span> ${formatTime(kot.placedAt)}
-      </div>
-      <div style="font-size: 11px; margin-bottom: 4px;">
-        <span class="bold">Printed:</span> ${formatTime(kot.printedAt)}
-      </div>
+      <div class="meta">Placed: ${formatTime(kot.placedAt)}</div>
+      <div class="meta">Printed: ${formatTime(kot.printedAt)}</div>
 
       <div class="divider-solid"></div>
 
       <!-- Items -->
-      <div style="font-size: 12px; font-weight: bold; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px;">
+      <div style="font-size: 15px; font-weight: 900; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px;">
         Items
       </div>
       <table>
@@ -197,8 +237,8 @@ function generateKOTHtml(kot) {
       <!-- Special Instructions -->
       ${kot.specialInstructions ? `
         <div class="divider"></div>
-        <div style="font-size: 12px;">
-          <div class="bold" style="text-transform: uppercase;">⚠ Special Instructions:</div>
+        <div style="font-size: 15px; font-weight: 900;">
+          <div style="text-transform: uppercase;">⚠ Special Instructions:</div>
           <div style="font-style: italic; margin-top: 3px;">${kot.specialInstructions}</div>
         </div>
       ` : ''}
@@ -208,7 +248,7 @@ function generateKOTHtml(kot) {
       <!-- Footer -->
       <div class="center footer">
         <div>${kot.orderType?.toUpperCase()} ORDER</div>
-        <div style="margin-top: 4px; font-size: 9px;">*** Kitchen Copy ***</div>
+        <div style="margin-top: 4px;">*** Kitchen Copy ***</div>
       </div>
 
       <div style="height: 20px;"></div>

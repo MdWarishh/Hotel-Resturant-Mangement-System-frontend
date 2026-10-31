@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { apiRequest } from '@/services/api';
-import { ShoppingCart, Receipt, Clock, DollarSign, Loader2, AlertCircle } from 'lucide-react';
+import { ShoppingCart, Receipt, Clock, DollarSign, Loader2 } from 'lucide-react';
 
 export default function CashierHomePage() {
   const { user } = useAuth();
@@ -17,30 +17,40 @@ export default function CashierHomePage() {
   });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchStats();
-  }, []);
-
-  const fetchStats = async () => {
-    setLoading(true);
+  const fetchStats = useCallback(async () => {
     try {
-      // Get today's sales
       const today = new Date().toISOString().split('T')[0];
-      const salesRes = await apiRequest(`/reports/sales?startDate=${today}&endDate=${today}`);
-      const ordersRes = await apiRequest('/pos/orders/running');
+
+      // ✅ Dono API parallel (pehle ek ke baad ek chal rahi thi)
+      const [salesRes, ordersRes] = await Promise.all([
+        apiRequest(`/reports/sales?startDate=${today}&endDate=${today}`),
+        apiRequest('/pos/orders/running'),
+      ]);
+
       const allOrders = ordersRes.data?.orders || [];
 
       setStats({
         todayCollection: salesRes.data?.totals?.totalSales || 0,
-        activeOrders: ordersRes.data?.orders?.length || 0,
-       pendingBills: allOrders.filter(o => o.payment?.status !== 'PAID').length,
+        activeOrders: allOrders.length,
+        pendingBills: allOrders.filter((o) => o.payment?.status !== 'PAID').length,
       });
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  // ✅ Next pages pehle se prefetch, click par instant open
+  useEffect(() => {
+    router.prefetch('/cashier/pos');
+    router.prefetch('/cashier/orders');
+    router.prefetch('/cashier/pos/history');
+  }, [router]);
 
   return (
     <div className="min-h-screen bg-[rgb(238,238,238)] p-4 sm:p-6 lg:p-8 flex flex-col">
@@ -64,7 +74,6 @@ export default function CashierHomePage() {
               title="Today's Collection"
               value={`₹${stats.todayCollection.toLocaleString()}`}
               icon={<DollarSign className="h-6 w-6 sm:h-8 sm:w-8 text-green-600" />}
-              
             />
             <StatCard
               title="Active Orders"
